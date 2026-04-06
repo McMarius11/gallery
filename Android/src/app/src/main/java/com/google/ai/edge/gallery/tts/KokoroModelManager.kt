@@ -101,7 +101,7 @@ object KokoroModelManager {
       "tokens.txt" to "tokens.txt",
     )
 
-    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v0.19/resolve/main/"
+    val baseUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/"
 
     var completedFiles = 0
     val totalFiles = files.size
@@ -175,7 +175,7 @@ object KokoroModelManager {
     val dataDir = File(modelDir, "espeak-ng-data")
     dataDir.mkdirs()
 
-    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v0.19/resolve/main/"
+    val baseUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/"
 
     // Download the phontab, intonation, and phondata files
     val espeakFiles = listOf(
