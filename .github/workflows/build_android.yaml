@@ -19,6 +19,11 @@ jobs:
     defaults:
       run:
         working-directory: ./Android/src
+    env:
+      SIGNING_KEYSTORE_PATH: /tmp/echo-release.jks
+      SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - name: Checkout the source code
         uses: actions/checkout@v3
@@ -37,6 +42,10 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Decode signing keystore
+        if: ${{ env.SIGNING_KEYSTORE_PASSWORD != '' }}
+        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > /tmp/echo-release.jks
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
