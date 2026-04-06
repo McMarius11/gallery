@@ -130,6 +130,7 @@ data class Task(
 ) {
   fun allowThinking(): Boolean {
     return id == BuiltInTaskId.LLM_CHAT ||
+      id == BuiltInTaskId.LLM_VOICE ||
       id == BuiltInTaskId.LLM_ASK_IMAGE ||
       id == BuiltInTaskId.LLM_ASK_AUDIO
   }
@@ -137,6 +138,7 @@ data class Task(
 
 object BuiltInTaskId {
   const val LLM_CHAT = "llm_chat"
+  const val LLM_VOICE = "llm_voice"
   const val LLM_PROMPT_LAB = "llm_prompt_lab"
   const val LLM_ASK_IMAGE = "llm_ask_image"
   const val LLM_ASK_AUDIO = "llm_ask_audio"
@@ -149,6 +151,7 @@ object BuiltInTaskId {
 private val allLegacyTaskIds: MutableSet<String> =
   mutableSetOf(
     BuiltInTaskId.LLM_CHAT,
+    BuiltInTaskId.LLM_VOICE,
     BuiltInTaskId.LLM_PROMPT_LAB,
     BuiltInTaskId.LLM_ASK_IMAGE,
     BuiltInTaskId.LLM_ASK_AUDIO,

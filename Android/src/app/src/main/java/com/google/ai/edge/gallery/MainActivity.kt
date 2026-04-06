@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
       contentSet = true
     }
 
+    // Initialize TTS for voice mode.
+    com.google.ai.edge.gallery.ui.common.chat.TtsManager.init(this)
+
     modelManagerViewModel.loadModelAllowlist()
 
     // Show splash screen.

@@ -44,6 +44,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "AI Edge Gallery"
+rootProject.name = "Echo"
 
 include(":app")

@@ -87,11 +87,13 @@ class LlmSingleTurnTask @Inject constructor() : CustomTask {
 }
 
 @Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
+@InstallIn(SingletonComponent::class)
 internal object LlmSingleTurnTaskModule {
+  /* Removed: Prompt Lab tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return LlmSingleTurnTask()
   }
+  */
 }

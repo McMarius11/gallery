@@ -25,9 +25,11 @@ import dagger.multibindings.IntoSet
 @Module
 @InstallIn(SingletonComponent::class)
 internal object TinyGardenTaskModule {
+  /* Removed: Tiny Garden tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return TinyGardenTask()
   }
+  */
 }

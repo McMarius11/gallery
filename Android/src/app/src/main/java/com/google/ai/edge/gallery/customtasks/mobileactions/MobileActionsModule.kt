@@ -25,9 +25,11 @@ import dagger.multibindings.IntoSet
 @Module
 @InstallIn(SingletonComponent::class)
 internal object MobileActionsModule {
+  /* Removed: Mobile Actions tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return MobileActionsTask()
   }
+  */
 }

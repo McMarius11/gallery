@@ -71,6 +71,7 @@ fun LlmChatScreen(
   sendMessageTrigger: SendMessageTrigger? = null,
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
+  voiceMode: Boolean = false,
 ) {
   ChatViewWrapper(
     viewModel = viewModel,
@@ -90,6 +91,7 @@ fun LlmChatScreen(
     sendMessageTrigger = sendMessageTrigger,
     showImagePicker = showImagePicker,
     showAudioPicker = showAudioPicker,
+    voiceMode = voiceMode,
   )
 }
 
@@ -185,6 +187,7 @@ fun ChatViewWrapper(
   sendMessageTrigger: SendMessageTrigger? = null,
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
+  voiceMode: Boolean = false,
 ) {
   val context = LocalContext.current
   val task = modelManagerViewModel.getTaskById(id = taskId)!!
@@ -223,7 +226,17 @@ fun ChatViewWrapper(
           images = images,
           audioMessages = audioMessages,
           onFirstToken = onFirstToken,
-          onDone = { onGenerateResponseDone(model) },
+          onDone = {
+            // Speak the response in voice mode.
+            if (voiceMode) {
+              val messages = viewModel.uiState.value.messagesByModel[model.name]
+              val lastAgentMessage = messages?.lastOrNull { it is ChatMessageText && it.side == com.google.ai.edge.gallery.ui.common.chat.ChatSide.AGENT }
+              if (lastAgentMessage is ChatMessageText) {
+                com.google.ai.edge.gallery.ui.common.chat.TtsManager.speak(lastAgentMessage.content)
+              }
+            }
+            onGenerateResponseDone(model)
+          },
           onError = { errorMessage ->
             viewModel.handleError(
               context = context,
@@ -286,5 +299,6 @@ fun ChatViewWrapper(
     onSystemPromptChanged = onSystemPromptChanged,
     sendMessageTrigger = sendMessageTrigger,
     showAudioPicker = showAudioPicker,
+    voiceMode = voiceMode,
   )
 }

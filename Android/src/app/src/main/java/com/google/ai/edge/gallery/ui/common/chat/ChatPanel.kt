@@ -121,7 +121,10 @@ fun ChatPanel(
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
   emptyStateComposable: @Composable (Model) -> Unit = {},
+  voiceMode: Boolean = false,
 ) {
+  val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel? =
+    if (voiceMode) androidx.hilt.navigation.compose.hiltViewModel() else null
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val messages = uiState.messagesByModel[selectedModel.name] ?: listOf()
@@ -576,6 +579,8 @@ fun ChatPanel(
         showAudioPicker = selectedModel.llmSupportAudio && showAudioPicker,
         showStopButtonWhenInProgress = showStopButtonInInputWhenInProgress,
         onImageLimitExceeded = { showImageLimitBanner = true },
+        voiceMode = voiceMode,
+        holdToDictateViewModel = holdToDictateViewModel,
       )
     }
   }

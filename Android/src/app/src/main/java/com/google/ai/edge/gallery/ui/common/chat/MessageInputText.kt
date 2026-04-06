@@ -173,6 +173,8 @@ fun MessageInputText(
   showAudioPicker: Boolean = false,
   showStopButtonWhenInProgress: Boolean = false,
   onImageLimitExceeded: () -> Unit = {},
+  voiceMode: Boolean = false,
+  holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel? = null,
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
@@ -296,6 +298,9 @@ fun MessageInputText(
     onDispose { lifecycleOwner.lifecycle.removeObserver(sensorObserver) }
   }
 
+  // Voice mode state: when voiceMode is true, start in voice input; user can toggle to keyboard.
+  var useVoiceInput by remember { mutableStateOf(voiceMode) }
+
   Column {
     // A preview panel for the selected images and audio clips.
     if (pickedImages.isNotEmpty() || pickedAudioClips.isNotEmpty()) {
@@ -359,31 +364,69 @@ fun MessageInputText(
                   .padding(vertical = 8.dp)
                   .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
             ) {
-              // First row: text field for input.
+              // First row: text field or voice input.
               Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
               ) {
-                // Text field.
-                val cdPromptInput = stringResource(R.string.cd_prompt_input_text_field)
-                TextField(
-                  value = curMessage,
-                  minLines = 1,
-                  maxLines = 3,
-                  onValueChange = onValueChanged,
-                  colors =
-                    TextFieldDefaults.colors(
-                      unfocusedContainerColor = Color.Transparent,
-                      focusedContainerColor = Color.Transparent,
-                      focusedIndicatorColor = Color.Transparent,
-                      unfocusedIndicatorColor = Color.Transparent,
-                      disabledIndicatorColor = Color.Transparent,
-                      disabledContainerColor = Color.Transparent,
-                    ),
-                  textStyle = bodyLargeNarrow,
-                  modifier = Modifier.weight(1f).semantics { contentDescription = cdPromptInput },
-                  placeholder = { Text(stringResource(textFieldPlaceHolderRes)) },
-                )
+                // Voice/keyboard toggle (only shown when voiceMode is enabled).
+                if (voiceMode) {
+                  IconButton(
+                    onClick = { useVoiceInput = !useVoiceInput },
+                    enabled = !inProgress && !isResettingSession,
+                  ) {
+                    Icon(
+                      if (useVoiceInput) androidx.compose.material.icons.Icons.Outlined.KeyboardAlt else Icons.Rounded.Mic,
+                      contentDescription = if (useVoiceInput) stringResource(R.string.cd_switch_to_keyboard) else stringResource(R.string.cd_switch_to_voice),
+                      tint = MaterialTheme.colorScheme.primary,
+                    )
+                  }
+                }
+
+                if (useVoiceInput && voiceMode && holdToDictateViewModel != null) {
+                  // Hold-to-dictate voice input.
+                  com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictate(
+                    viewModel = holdToDictateViewModel,
+                    enabled = !inProgress && !isResettingSession && !modelInitializing,
+                    task = task,
+                    onDone = { recognizedText ->
+                      if (recognizedText.isNotEmpty()) {
+                        onSendMessage(
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            audioClips = pickedAudioClips,
+                            text = recognizedText,
+                          )
+                        )
+                        pickedImages = listOf()
+                        pickedAudioClips = listOf()
+                      }
+                    },
+                    onAmplitudeChanged = onAmplitudeChanged,
+                    modifier = Modifier.weight(1f),
+                  )
+                } else {
+                  // Text field.
+                  val cdPromptInput = stringResource(R.string.cd_prompt_input_text_field)
+                  TextField(
+                    value = curMessage,
+                    minLines = 1,
+                    maxLines = 3,
+                    onValueChange = onValueChanged,
+                    colors =
+                      TextFieldDefaults.colors(
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                      ),
+                    textStyle = bodyLargeNarrow,
+                    modifier = Modifier.weight(1f).semantics { contentDescription = cdPromptInput },
+                    placeholder = { Text(stringResource(textFieldPlaceHolderRes)) },
+                  )
+                }
                 Spacer(modifier = Modifier.width(4.dp))
               }
 

@@ -120,9 +120,11 @@ class AgentChatTask @Inject constructor() : CustomTask {
 @Module
 @InstallIn(SingletonComponent::class)
 internal object AgentChatTaskModule {
+  /* Removed: Agent Skills tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return AgentChatTask()
   }
+  */
 }

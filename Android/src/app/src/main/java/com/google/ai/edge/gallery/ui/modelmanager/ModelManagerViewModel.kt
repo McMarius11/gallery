@@ -166,9 +166,10 @@ private val RESET_CONVERSATION_TURN_COUNT_CONFIG =
 
 private val PREDEFINED_LLM_TASK_ORDER =
   listOf(
+    BuiltInTaskId.LLM_CHAT,
+    BuiltInTaskId.LLM_VOICE,
     BuiltInTaskId.LLM_ASK_IMAGE,
     BuiltInTaskId.LLM_ASK_AUDIO,
-    BuiltInTaskId.LLM_CHAT,
     BuiltInTaskId.LLM_AGENT_CHAT,
     BuiltInTaskId.LLM_PROMPT_LAB,
     BuiltInTaskId.LLM_TINY_GARDEN,
@@ -566,6 +567,7 @@ constructor(
     val setOfTasks =
       mutableSetOf(
         BuiltInTaskId.LLM_CHAT,
+        BuiltInTaskId.LLM_VOICE,
         BuiltInTaskId.LLM_ASK_IMAGE,
         BuiltInTaskId.LLM_ASK_AUDIO,
         BuiltInTaskId.LLM_PROMPT_LAB,
@@ -591,12 +593,6 @@ constructor(
             task.id != BuiltInTaskId.LLM_MOBILE_ACTIONS)
       ) {
         task.models.add(model)
-        if (task.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-          val newConfigs = model.configs.toMutableList()
-          newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-          model.configs = newConfigs
-          model.preProcess()
-        }
       }
       task.updateTrigger.value = System.currentTimeMillis()
     }
@@ -882,10 +878,10 @@ constructor(
             val task = curTasks.find { it.id == taskType }
             task?.models?.add(model)
 
-            if (task?.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-              val newConfigs = model.configs.toMutableList()
-              newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-              model.configs = newConfigs
+            // Also add chat-compatible models to the Voice task.
+            if (taskType == BuiltInTaskId.LLM_CHAT) {
+              val voiceTask = curTasks.find { it.id == BuiltInTaskId.LLM_VOICE }
+              voiceTask?.models?.add(model)
             }
           }
         }
@@ -902,6 +898,11 @@ constructor(
               task.models.add(model)
             }
           }
+        }
+
+        // Trigger UI recomposition for model counts.
+        for (task in curTasks) {
+          task.updateTrigger.value = System.currentTimeMillis()
         }
 
         // Process all tasks.
@@ -1025,24 +1026,7 @@ constructor(
 
       // Add to task.
       tasks.get(key = BuiltInTaskId.LLM_CHAT)?.models?.add(model)
-      tasks.get(key = BuiltInTaskId.LLM_PROMPT_LAB)?.models?.add(model)
-      tasks.get(key = BuiltInTaskId.LLM_AGENT_CHAT)?.models?.add(model)
-      if (model.llmSupportImage) {
-        tasks.get(key = BuiltInTaskId.LLM_ASK_IMAGE)?.models?.add(model)
-      }
-      if (model.llmSupportAudio) {
-        tasks.get(key = BuiltInTaskId.LLM_ASK_AUDIO)?.models?.add(model)
-      }
-      if (model.llmSupportTinyGarden) {
-        tasks.get(key = BuiltInTaskId.LLM_TINY_GARDEN)?.models?.add(model)
-        val newConfigs = model.configs.toMutableList()
-        newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-        model.configs = newConfigs
-        model.preProcess()
-      }
-      if (model.llmSupportMobileActions) {
-        tasks.get(key = BuiltInTaskId.LLM_MOBILE_ACTIONS)?.models?.add(model)
-      }
+      tasks.get(key = BuiltInTaskId.LLM_VOICE)?.models?.add(model)
 
       // Update status.
       modelDownloadStatus[model.name] =

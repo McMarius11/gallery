@@ -135,6 +135,90 @@ internal object LlmChatTaskModule {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Voice Chat.
+
+class LlmVoiceTask @Inject constructor() : CustomTask {
+  override val task: Task =
+    Task(
+      id = BuiltInTaskId.LLM_VOICE,
+      label = "Voice",
+      category = Category.LLM,
+      icon = Icons.Outlined.Mic,
+      models = mutableListOf(),
+      description = "Talk with Echo using your voice",
+      shortDescription = "Voice conversation with Echo",
+      docUrl = "https://github.com/google-ai-edge/LiteRT-LM/blob/main/kotlin/README.md",
+      sourceCodeUrl =
+        "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
+      textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
+    )
+
+  override fun initializeModelFn(
+    context: Context,
+    coroutineScope: CoroutineScope,
+    model: Model,
+    onDone: (String) -> Unit,
+  ) {
+    model.runtimeHelper.initialize(
+      context = context,
+      model = model,
+      supportImage = false,
+      supportAudio = false,
+      onDone = onDone,
+      coroutineScope = coroutineScope,
+    )
+  }
+
+  override fun cleanUpModelFn(
+    context: Context,
+    coroutineScope: CoroutineScope,
+    model: Model,
+    onDone: () -> Unit,
+  ) {
+    model.runtimeHelper.cleanUp(model = model, onDone = onDone)
+  }
+
+  @Composable
+  override fun MainScreen(data: Any) {
+    val myData = data as CustomTaskDataForBuiltinTask
+    LlmChatScreen(
+      modelManagerViewModel = myData.modelManagerViewModel,
+      navigateUp = myData.onNavUp,
+      taskId = BuiltInTaskId.LLM_VOICE,
+      voiceMode = true,
+      emptyStateComposable = {
+        Box(modifier = Modifier.fillMaxSize()) {
+          Column(
+            modifier =
+              Modifier.align(Alignment.Center).padding(horizontal = 48.dp).padding(bottom = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            Text("Voice Chat", style = emptyStateTitle)
+            Text(
+              "Talk with Echo using your voice. Hold to speak.",
+              style = emptyStateContent,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              textAlign = TextAlign.Center,
+            )
+          }
+        }
+      },
+    )
+  }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal object LlmVoiceTaskModule {
+  @Provides
+  @IntoSet
+  fun provideTask(): CustomTask {
+    return LlmVoiceTask()
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Ask image.
 
 class LlmAskImageTask @Inject constructor() : CustomTask {
@@ -189,13 +273,15 @@ class LlmAskImageTask @Inject constructor() : CustomTask {
 }
 
 @Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
+@InstallIn(SingletonComponent::class)
 internal object LlmAskImageModule {
+  /* Removed: Ask Image tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return LlmAskImageTask()
   }
+  */
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -254,11 +340,13 @@ class LlmAskAudioTask @Inject constructor() : CustomTask {
 }
 
 @Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
+@InstallIn(SingletonComponent::class)
 internal object LlmAskAudioModule {
+  /* Removed: Audio Scribe tile is no longer shown.
   @Provides
   @IntoSet
   fun provideTask(): CustomTask {
     return LlmAskAudioTask()
   }
+  */
 }

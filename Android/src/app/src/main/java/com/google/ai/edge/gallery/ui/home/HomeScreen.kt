@@ -621,7 +621,7 @@ private fun AppTitle(enableAnimation: Boolean) {
 @Composable
 fun AppTitleGm4(enableAnimation: Boolean) {
   val text1 = "Google"
-  val text2 = "AI Edge Gallery"
+  val text2 = "Echo"
   val annotatedText = buildAnnotatedString {
     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(text1) }
     append(" ")
@@ -861,37 +861,23 @@ private fun TaskList(
     ) {
       val chatToDescription =
         mapOf(
-          BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma 4 model today",
-          // use "\u00a0" to make sure the word before and after it should always be together when
-          // wrapping lines.
-          BuiltInTaskId.LLM_AGENT_CHAT to "Have Gemma 4 complete agentic tasks for\u00A0you",
+          BuiltInTaskId.LLM_CHAT to "Chat with Echo using text",
+          BuiltInTaskId.LLM_VOICE to "Talk with Echo using your\u00A0voice",
         )
-      for (task in
-        listOf(
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)!!,
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_AGENT_CHAT)!!,
-        )) {
+      val featuredTasks = listOfNotNull(
+        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT),
+        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_VOICE),
+      )
+      for (task in featuredTasks) {
         TaskCard(
           task = task,
           index = 0,
           animate = !initialAnimationDone && enableAnimation,
           onClick = { navigateToTaskScreen(task) },
           modifier = Modifier.fillMaxWidth(),
-          description = chatToDescription[task.id]!!,
+          description = chatToDescription[task.id] ?: "",
         )
       }
-
-      Text(
-        text = "Explore other use cases",
-        style =
-          MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight.Medium,
-            fontSize = 20.sp,
-            lineHeight = 24.sp,
-          ),
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(top = 22.dp, bottom = 16.dp),
-      )
     }
   }
 

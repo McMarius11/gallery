@@ -109,6 +109,7 @@ fun ChatView(
   curSystemPrompt: String = "",
   onSystemPromptChanged: (String) -> Unit = {},
   sendMessageTrigger: SendMessageTrigger? = null,
+  voiceMode: Boolean = false,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -246,6 +247,7 @@ fun ChatView(
                 showImagePicker = showImagePicker,
                 showAudioPicker = showAudioPicker,
                 emptyStateComposable = emptyStateComposable,
+                voiceMode = voiceMode,
               )
             // Model download
             false ->
