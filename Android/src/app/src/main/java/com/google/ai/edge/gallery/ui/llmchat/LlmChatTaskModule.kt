@@ -242,7 +242,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     // Initialize Kokoro TTS and Whisper ASR when Voice task opens.
     LaunchedEffect(Unit) {
       // Download both models in parallel
-      kotlinx.coroutines.launch {
+      launch {
         com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
         if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
           com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
@@ -255,7 +255,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
           }
         }
       }
-      kotlinx.coroutines.launch {
+      launch {
         com.google.ai.edge.gallery.tts.AsrModelManager.ensureModelReady(context)
       }
     }

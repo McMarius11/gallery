@@ -17,7 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.isActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -166,7 +166,7 @@ class SherpaAsrEngine(private val context: Context) {
     var speechDurationMs = 0L
     val chunkDurationMs = (shortBuffer.size * 1000L) / SAMPLE_RATE
 
-    while (isListening && isActive) {
+    while (isListening && coroutineContext[Job]?.isActive != false) {
       val readCount = record.read(shortBuffer, 0, shortBuffer.size)
       if (readCount <= 0) continue
 
