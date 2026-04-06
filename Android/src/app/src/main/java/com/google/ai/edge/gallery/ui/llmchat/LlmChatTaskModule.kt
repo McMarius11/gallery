@@ -17,23 +17,37 @@
 package com.google.ai.edge.gallery.ui.llmchat
 
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Mms
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
@@ -198,35 +212,101 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     var curSystemPrompt by androidx.compose.runtime.remember {
       androidx.compose.runtime.mutableStateOf(task.defaultSystemPrompt)
     }
-    LlmChatScreen(
-      modelManagerViewModel = myData.modelManagerViewModel,
-      navigateUp = myData.onNavUp,
-      taskId = BuiltInTaskId.LLM_VOICE,
-      voiceMode = true,
-      allowEditingSystemPrompt = true,
-      curSystemPrompt = curSystemPrompt,
-      onSystemPromptChanged = { newPrompt ->
-        curSystemPrompt = newPrompt
-      },
-      emptyStateComposable = {
-        Box(modifier = Modifier.fillMaxSize()) {
-          Column(
-            modifier =
-              Modifier.align(Alignment.Center).padding(horizontal = 48.dp).padding(bottom = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Text("Voice Chat", style = emptyStateTitle)
-            Text(
-              "Tap the mic button to start talking with Maya.",
-              style = emptyStateContent,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-              textAlign = TextAlign.Center,
-            )
+    var showTelephonyScreen by androidx.compose.runtime.remember {
+      androidx.compose.runtime.mutableStateOf(false)
+    }
+    val llmChatViewModel: LlmChatViewModel = hiltViewModel()
+    val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
+    val telephonyViewModel: com.google.ai.edge.gallery.ui.telephony.TelephonyViewModel = hiltViewModel()
+
+    val modelManagerUiState by myData.modelManagerViewModel.uiState.collectAsState()
+    val selectedModel = modelManagerUiState.selectedModel
+
+    Box(modifier = Modifier.fillMaxSize()) {
+      LlmChatScreen(
+        modelManagerViewModel = myData.modelManagerViewModel,
+        navigateUp = myData.onNavUp,
+        taskId = BuiltInTaskId.LLM_VOICE,
+        voiceMode = true,
+        viewModel = llmChatViewModel,
+        allowEditingSystemPrompt = true,
+        curSystemPrompt = curSystemPrompt,
+        onSystemPromptChanged = { newPrompt ->
+          curSystemPrompt = newPrompt
+        },
+        emptyStateComposable = {
+          Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+              modifier =
+                Modifier.align(Alignment.Center).padding(horizontal = 48.dp).padding(bottom = 48.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              // Call button
+              IconButton(
+                onClick = { showTelephonyScreen = true },
+                modifier = Modifier
+                  .size(96.dp)
+                  .clip(CircleShape)
+                  .background(Color(0xFF4CAF50)),
+                colors = IconButtonDefaults.iconButtonColors(
+                  containerColor = Color(0xFF4CAF50),
+                  contentColor = Color.White,
+                ),
+              ) {
+                Icon(
+                  imageVector = Icons.Rounded.Phone,
+                  contentDescription = "Call Maya",
+                  modifier = Modifier.size(48.dp),
+                )
+              }
+
+              Spacer(modifier = Modifier.height(16.dp))
+
+              Text("Call Maya", style = emptyStateTitle)
+              Text(
+                "Tap to start a voice conversation with Maya.",
+                style = emptyStateContent,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+              )
+            }
           }
-        }
-      },
-    )
+        },
+      )
+
+      // Telephony overlay
+      if (showTelephonyScreen && selectedModel.name != "empty") {
+        com.google.ai.edge.gallery.ui.telephony.TelephonyCallScreen(
+          telephonyViewModel = telephonyViewModel,
+          holdToDictateViewModel = holdToDictateViewModel,
+          llmViewModel = llmChatViewModel,
+          model = selectedModel,
+          onSendMessage = { text ->
+            val messages = listOf(
+              com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
+                content = text,
+                side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER,
+              )
+            )
+            for (message in messages) {
+              llmChatViewModel.addMessage(model = selectedModel, message = message)
+            }
+            llmChatViewModel.generateResponse(
+              model = selectedModel,
+              input = text,
+              images = mutableListOf(),
+              audioMessages = mutableListOf(),
+              onDone = {},
+              onError = { errorMessage ->
+                android.util.Log.e("TelephonyMode", "LLM error: $errorMessage")
+              },
+            )
+          },
+          onEndCall = { showTelephonyScreen = false },
+        )
+      }
+    }
   }
 }
 

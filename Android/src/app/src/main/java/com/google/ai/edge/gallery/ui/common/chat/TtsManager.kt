@@ -17,60 +17,37 @@
 package com.google.ai.edge.gallery.ui.common.chat
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import java.util.Locale
+import com.google.ai.edge.gallery.tts.AndroidTtsEngine
+import com.google.ai.edge.gallery.tts.TtsEngine
 
 object TtsManager {
-  private var tts: TextToSpeech? = null
-  private var isInitialized = false
+  private var engine: TtsEngine = AndroidTtsEngine()
 
   /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
-  var onSpeakingDone: (() -> Unit)? = null
+  var onSpeakingDone: (() -> Unit)?
+    get() = engine.onSpeakingDone
+    set(value) { engine.onSpeakingDone = value }
 
   fun init(context: Context) {
-    if (tts == null) {
-      tts = TextToSpeech(context.applicationContext) { status ->
-        isInitialized = (status == TextToSpeech.SUCCESS)
-        if (isInitialized) {
-          tts?.language = Locale.US
-          tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
-            override fun onDone(utteranceId: String?) {
-              onSpeakingDone?.invoke()
-            }
-            @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) {}
-          })
-        }
-      }
-    }
+    engine.init(context)
+  }
+
+  fun setEngine(newEngine: TtsEngine) {
+    engine.shutdown()
+    engine = newEngine
   }
 
   fun speak(text: String, onDone: (() -> Unit)? = null) {
-    if (isInitialized && text.isNotBlank()) {
-      onSpeakingDone = onDone
-      val cleanText = text
-        .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-        .replace(Regex("\\*(.*?)\\*"), "$1")
-        .replace(Regex("#{1,6}\\s"), "")
-        .replace(Regex("```[\\s\\S]*?```"), "")
-        .replace(Regex("`(.*?)`"), "$1")
-        .trim()
-      tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "echo_tts")
-    }
+    engine.speak(text, onDone)
   }
 
   fun stop() {
-    tts?.stop()
-    onSpeakingDone = null
+    engine.stop()
   }
 
   fun shutdown() {
-    tts?.stop()
-    tts?.shutdown()
-    tts = null
-    isInitialized = false
-    onSpeakingDone = null
+    engine.shutdown()
   }
+
+  fun isReady(): Boolean = engine.isReady()
 }
