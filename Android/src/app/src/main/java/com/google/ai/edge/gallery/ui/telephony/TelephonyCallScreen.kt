@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.ai.edge.gallery.data.Model
@@ -72,7 +73,9 @@ fun TelephonyCallScreen(
   // Ensure Kokoro TTS model is downloaded and engine is swapped in
   LaunchedEffect(Unit) {
     KokoroModelManager.ensureModelReady(context)
-    if (KokoroModelManager.status.value == KokoroModelStatus.READY && !TtsManager.isReady()) {
+    if (KokoroModelManager.status.value == KokoroModelStatus.READY &&
+      TtsManager.getAvailableVoices().isEmpty()
+    ) {
       val kokoroEngine = KokoroTtsEngine()
       kokoroEngine.init(context)
       if (kokoroEngine.isReady()) {
@@ -174,6 +177,18 @@ fun TelephonyCallScreen(
           color = SubtitleGray,
           fontSize = 14.sp,
         )
+
+        // Show error message if speech recognition failed
+        if (uiState.errorMessage != null) {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(
+            text = uiState.errorMessage!!,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 32.dp),
+            textAlign = TextAlign.Center,
+          )
+        }
 
         // Show partial recognized text when listening
         if (uiState.partialRecognizedText.isNotBlank() &&

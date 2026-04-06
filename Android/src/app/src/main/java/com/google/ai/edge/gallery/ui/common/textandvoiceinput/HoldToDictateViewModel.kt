@@ -55,6 +55,7 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   private val recognizerIntent: Intent
   private var onRecognitionDone: ((String) -> Unit)? = null
   private var onAmplitudeChanged: ((Int) -> Unit)? = null
+  private var onErrorCallback: ((Int) -> Unit)? = null
 
   init {
     // Initialize SpeechRecognizer
@@ -73,9 +74,14 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
       }
   }
 
-  fun startSpeechRecognition(onDone: (String) -> Unit, onAmplitudeChanged: (Int) -> Unit) {
+  fun startSpeechRecognition(
+    onDone: (String) -> Unit,
+    onAmplitudeChanged: (Int) -> Unit,
+    onError: ((Int) -> Unit)? = null,
+  ) {
     onRecognitionDone = onDone
     this.onAmplitudeChanged = onAmplitudeChanged
+    this.onErrorCallback = onError
 
     speechRecognizer.startListening(recognizerIntent)
     setRecognizedText(text = "")
@@ -127,6 +133,7 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   override fun onError(error: Int) {
     Log.w(TAG, "SpeechRecognizer error: $error")
     setRecognizing(false)
+    onErrorCallback?.invoke(error)
     onRecognitionDone?.invoke("")
   }
 

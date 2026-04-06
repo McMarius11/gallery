@@ -26,6 +26,7 @@ data class TelephonyUiState(
   val phase: CallPhase = CallPhase.IDLE,
   val currentAmplitude: Int = 0,
   val partialRecognizedText: String = "",
+  val errorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -70,6 +71,10 @@ class TelephonyViewModel @Inject constructor() : ViewModel() {
 
   fun updatePartialText(text: String) {
     _uiState.update { it.copy(partialRecognizedText = text) }
+  }
+
+  fun setError(message: String?) {
+    _uiState.update { it.copy(errorMessage = message) }
   }
 
   fun formatDuration(): String {

@@ -38,6 +38,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -224,6 +226,22 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
 
     val modelManagerUiState by myData.modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
+    val context = LocalContext.current
+
+    // Initialize Kokoro TTS when Voice task opens (downloads model if needed).
+    LaunchedEffect(Unit) {
+      com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
+      if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
+        com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
+        com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
+      ) {
+        val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
+        kokoroEngine.init(context)
+        if (kokoroEngine.isReady()) {
+          com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
+        }
+      }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
       LlmChatScreen(

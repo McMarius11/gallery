@@ -67,6 +67,9 @@ class ConversationLoopController(
       onAmplitudeChanged = { amplitude ->
         telephonyViewModel.updateAmplitude(amplitude)
       },
+      onError = { errorCode ->
+        onSpeechRecognizerError(errorCode)
+      },
     )
   }
 
@@ -132,6 +135,7 @@ class ConversationLoopController(
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
       Log.e(TAG, "Too many consecutive errors, stopping loop")
       telephonyViewModel.setPhase(CallPhase.IDLE)
+      telephonyViewModel.setError("Speech recognition unavailable. Check microphone permission and internet connection.")
       return
     }
 
