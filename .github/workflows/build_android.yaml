@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_apk:
-    name: Build Android APK
+    name: Build Echo APK
     runs-on: ubuntu-latest
     defaults:
       run:
