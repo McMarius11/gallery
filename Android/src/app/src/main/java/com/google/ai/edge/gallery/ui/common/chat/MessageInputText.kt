@@ -68,6 +68,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.KeyboardAlt
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FlipCameraAndroid
@@ -376,7 +377,7 @@ fun MessageInputText(
                     enabled = !inProgress && !isResettingSession,
                   ) {
                     Icon(
-                      if (useVoiceInput) androidx.compose.material.icons.Icons.Outlined.KeyboardAlt else Icons.Rounded.Mic,
+                      if (useVoiceInput) Icons.Outlined.KeyboardAlt else Icons.Rounded.Mic,
                       contentDescription = if (useVoiceInput) stringResource(R.string.cd_switch_to_keyboard) else stringResource(R.string.cd_switch_to_voice),
                       tint = MaterialTheme.colorScheme.primary,
                     )
