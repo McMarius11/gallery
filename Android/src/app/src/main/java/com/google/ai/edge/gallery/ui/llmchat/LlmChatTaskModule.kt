@@ -151,6 +151,9 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
       sourceCodeUrl =
         "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
       textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
+      defaultSystemPrompt =
+        """You are Maya, a friendly and warm AI voice assistant. You speak naturally and conversationally, like a good friend. Keep your responses concise and spoken-word friendly. Do not use markdown formatting, bullet points, numbered lists, or code blocks. Respond as if you are having a phone call. Be helpful, empathetic, and natural."""
+          .trimIndent(),
     )
 
   override fun initializeModelFn(
@@ -159,13 +162,16 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     model: Model,
     onDone: (String) -> Unit,
   ) {
-    model.runtimeHelper.initialize(
+    LlmChatModelHelper.initialize(
       context = context,
       model = model,
       supportImage = false,
       supportAudio = false,
       onDone = onDone,
-      coroutineScope = coroutineScope,
+      systemInstruction =
+        if (task.defaultSystemPrompt.isNotEmpty()) {
+          com.google.ai.edge.litertlm.Contents.of(task.defaultSystemPrompt)
+        } else null,
     )
   }
 

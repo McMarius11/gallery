@@ -125,6 +125,7 @@ fun ChatPanel(
 ) {
   val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel? =
     if (voiceMode) androidx.hilt.navigation.compose.hiltViewModel() else null
+  val holdToDictateUiState = holdToDictateViewModel?.uiState?.collectAsState()
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val messages = uiState.messagesByModel[selectedModel.name] ?: listOf()
@@ -265,6 +266,22 @@ fun ChatPanel(
       modifier = Modifier.graphicsLayer { alpha = 0.8f },
     ) {
       AudioAnimation(bgColor = MaterialTheme.colorScheme.surface, amplitude = curAmplitude)
+    }
+
+    // Voice recognizer overlay during speech recognition.
+    if (voiceMode && holdToDictateViewModel != null && holdToDictateUiState != null) {
+      androidx.compose.animation.AnimatedVisibility(
+        visible = holdToDictateUiState.value.recognizing,
+        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
+        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 100, easing = androidx.compose.animation.core.FastOutSlowInEasing, delayMillis = 300)),
+      ) {
+        com.google.ai.edge.gallery.ui.common.textandvoiceinput.VoiceRecognizerOverlay(
+          task = task,
+          viewModel = holdToDictateViewModel,
+          curAmplitude = curAmplitude,
+          bottomPadding = innerPadding.calculateBottomPadding(),
+        )
+      }
     }
 
     Column(

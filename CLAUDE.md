@@ -80,6 +80,18 @@ All changes are in a single commit on `echo` branch:
 | `data/Tasks.kt` | Task IDs and definitions |
 | `res/values/strings.xml` | All user-facing strings |
 
+## Personas / System Prompts
+
+Personas are defined as `defaultSystemPrompt` in task definitions in `LlmChatTaskModule.kt`.
+
+| Task | Persona | Prompt Location |
+|------|---------|-----------------|
+| Voice | **Maya** - warm, conversational voice assistant | `LlmVoiceTask.task.defaultSystemPrompt` |
+| Chat | (no persona, default model behavior) | `LlmChatTask.task` |
+
+To customize Maya's personality, edit the `defaultSystemPrompt` string in `LlmVoiceTask`.
+The system prompt is passed to the LLM via `LlmChatModelHelper.initialize(systemInstruction = ...)`.
+
 ## Building
 
 APKs are built automatically via GitHub Actions on every push to `echo` or `main`.
