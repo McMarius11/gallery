@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -92,6 +94,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.ai.edge.gallery.R
+import com.google.ai.edge.gallery.data.VOICE_PERSONA_PRESETS
 import com.google.ai.edge.gallery.data.BooleanSwitchConfig
 import com.google.ai.edge.gallery.data.BottomSheetSelectorConfig
 import com.google.ai.edge.gallery.data.BottomSheetSelectorItem
@@ -208,12 +211,33 @@ fun ConfigDialog(
             ConfigEditorsPanel(configs = configs, values = values)
           }
         } else if (selectedTabIndex == 1) {
-          OutlinedTextField(
-            value = systemPrompt,
-            modifier = Modifier.weight(1f, fill = false),
-            textStyle = MaterialTheme.typography.bodySmall,
-            onValueChange = { systemPrompt = it },
-          )
+          Column(modifier = Modifier.weight(1f, fill = false)) {
+            // Persona preset chips.
+            LazyRow(
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              modifier = Modifier.padding(bottom = 8.dp),
+            ) {
+              items(VOICE_PERSONA_PRESETS) { preset ->
+                FilterChip(
+                  selected = preset.id != "custom" && systemPrompt == preset.prompt,
+                  onClick = {
+                    if (preset.id != "custom") {
+                      systemPrompt = preset.prompt
+                    }
+                  },
+                  label = { Text(preset.label, style = MaterialTheme.typography.labelSmall) },
+                )
+              }
+            }
+
+            // Free-form text editor.
+            OutlinedTextField(
+              value = systemPrompt,
+              modifier = Modifier.weight(1f, fill = false),
+              textStyle = MaterialTheme.typography.bodySmall,
+              onValueChange = { systemPrompt = it },
+            )
+          }
         }
 
         // Button row.
