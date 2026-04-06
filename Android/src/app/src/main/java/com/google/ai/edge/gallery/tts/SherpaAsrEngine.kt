@@ -157,7 +157,10 @@ class SherpaAsrEngine(private val context: Context) {
     Log.w(TAG, "Recording started")
 
     val shortBuffer = ShortArray(SAMPLE_RATE / 10) // 100ms chunks
-    val allSamples = mutableListOf<Float>()
+    // Pre-allocate for up to 30 seconds of audio. Grows if needed.
+    val maxSamples = SAMPLE_RATE * 30
+    var audioBuffer = FloatArray(maxSamples)
+    var totalSamples = 0
     var silenceDurationMs = 0L
     var hasSpeech = false
     var speechDurationMs = 0L
@@ -167,19 +170,22 @@ class SherpaAsrEngine(private val context: Context) {
       val readCount = record.read(shortBuffer, 0, shortBuffer.size)
       if (readCount <= 0) continue
 
-      // Convert to float samples [-1, 1]
-      val floatSamples = FloatArray(readCount) { shortBuffer[it] / 32768.0f }
-      allSamples.addAll(floatSamples.toList())
+      // Grow buffer if needed
+      if (totalSamples + readCount > audioBuffer.size) {
+        audioBuffer = audioBuffer.copyOf(audioBuffer.size * 2)
+      }
 
-      // Calculate RMS amplitude
+      // Convert short samples to float [-1, 1] directly into buffer
       var sumSquares = 0.0
       for (i in 0 until readCount) {
-        val s = shortBuffer[i].toDouble()
-        sumSquares += s * s
+        val s = shortBuffer[i]
+        audioBuffer[totalSamples + i] = s / 32768.0f
+        sumSquares += s.toDouble() * s.toDouble()
       }
-      val rms = sqrt(sumSquares / readCount).toFloat()
+      totalSamples += readCount
 
-      // Notify amplitude (scale to 0-65535)
+      // RMS amplitude
+      val rms = sqrt(sumSquares / readCount).toFloat()
       val amplitude = ((rms / 8000f) * 65535f).toInt().coerceIn(0, 65535)
       withContext(Dispatchers.Main) {
         onAmplitudeChanged(amplitude)
@@ -215,25 +221,25 @@ class SherpaAsrEngine(private val context: Context) {
     } catch (_: Exception) {}
     audioRecord = null
 
-    if (!hasSpeech || allSamples.size < SAMPLE_RATE / 2) {
-      // Too short or no speech detected
-      Log.w(TAG, "No speech detected or too short (${allSamples.size} samples)")
+    if (!hasSpeech || totalSamples < SAMPLE_RATE / 2) {
+      Log.w(TAG, "No speech detected or too short ($totalSamples samples)")
       withContext(Dispatchers.Main) {
         onResult("")
       }
       return
     }
 
-    // Run Whisper recognition
-    Log.w(TAG, "Running Whisper on ${allSamples.size} samples (${allSamples.size / SAMPLE_RATE}s)")
+    // Run Whisper recognition on collected audio
+    Log.w(TAG, "Running Whisper on $totalSamples samples (${totalSamples / SAMPLE_RATE}s)")
 
     val rec = recognizer ?: run {
       withContext(Dispatchers.Main) { onError(5) }
       return
     }
 
+    val samples = audioBuffer.copyOf(totalSamples)
     val stream = rec.createStream()
-    stream.acceptWaveform(allSamples.toFloatArray(), SAMPLE_RATE)
+    stream.acceptWaveform(samples, SAMPLE_RATE)
     rec.decode(stream)
     val result = rec.getResult(stream)
     stream.free()

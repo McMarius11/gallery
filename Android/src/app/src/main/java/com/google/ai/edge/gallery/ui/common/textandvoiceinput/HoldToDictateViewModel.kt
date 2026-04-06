@@ -138,7 +138,11 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   fun stopSpeechRecognition() {
     viewModelScope.launch {
       delay(500)
-      speechRecognizer.stopListening()
+      if (useSherpaAsr) {
+        sherpaAsrEngine?.stopListening()
+      } else {
+        speechRecognizer?.stopListening()
+      }
       setRecognizing(recognizing = false)
     }
   }

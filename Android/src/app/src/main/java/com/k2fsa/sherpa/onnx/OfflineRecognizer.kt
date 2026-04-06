@@ -101,11 +101,11 @@ data class OfflineRecognizerResult(
 
 class OfflineStream(var ptr: Long) {
     fun acceptWaveform(samples: FloatArray, sampleRate: Int) =
-        acceptWaveformImpl(ptr, samples = samples, sampleRate = sampleRate)
+        acceptWaveform(ptr, samples = samples, sampleRate = sampleRate)
 
     fun free() {
         if (ptr != 0L) {
-            deleteStream(ptr)
+            delete(ptr)
             ptr = 0
         }
     }
@@ -114,8 +114,8 @@ class OfflineStream(var ptr: Long) {
         free()
     }
 
-    private external fun acceptWaveformImpl(ptr: Long, samples: FloatArray, sampleRate: Int)
-    private external fun deleteStream(ptr: Long)
+    private external fun acceptWaveform(ptr: Long, samples: FloatArray, sampleRate: Int)
+    private external fun delete(ptr: Long)
 
     companion object {
         init {
