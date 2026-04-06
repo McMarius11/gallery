@@ -28,6 +28,9 @@ object KokoroModelManager {
   private val _downloadProgress = MutableStateFlow(0f)
   val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
 
+  private val _lastError = MutableStateFlow<String?>(null)
+  val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
   private const val MODEL_DIR = "kokoro"
   private const val BASE_URL =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
@@ -50,6 +53,7 @@ object KokoroModelManager {
     if (_status.value == KokoroModelStatus.ERROR) {
       _status.value = KokoroModelStatus.NOT_DOWNLOADED
       _downloadProgress.value = 0f
+      _lastError.value = null
     }
   }
 
@@ -70,12 +74,17 @@ object KokoroModelManager {
 
     _status.value = KokoroModelStatus.DOWNLOADING
     _downloadProgress.value = 0f
+    _lastError.value = null
+    Log.w(TAG, "Starting Kokoro model download…")
 
     try {
       downloadAndExtractModel(context)
       _status.value = KokoroModelStatus.READY
+      Log.w(TAG, "Kokoro model download complete, status=READY")
     } catch (e: Exception) {
-      Log.e(TAG, "Failed to download Kokoro model", e)
+      val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
+      Log.e(TAG, "Failed to download Kokoro model: $errorMsg", e)
+      _lastError.value = errorMsg
       _status.value = KokoroModelStatus.ERROR
     }
   }
@@ -106,7 +115,7 @@ object KokoroModelManager {
       }
 
       val url = URL("$baseUrl$remotePath")
-      Log.d(TAG, "Downloading: $url")
+      Log.w(TAG, "Downloading: $url")
 
       val tmpFile = File(modelDir, "$localName.tmp")
       try {
@@ -116,11 +125,14 @@ object KokoroModelManager {
         connection.readTimeout = 60_000
         connection.connect()
 
+        Log.w(TAG, "HTTP ${connection.responseCode} ${connection.responseMessage} for $localName (URL: $url)")
+
         if (connection.responseCode != HttpURLConnection.HTTP_OK) {
           throw Exception("HTTP ${connection.responseCode} for $url (${connection.responseMessage})")
         }
 
         val contentLength = connection.contentLengthLong
+        Log.w(TAG, "Content-Length for $localName: $contentLength bytes")
         var bytesRead = 0L
 
         connection.inputStream.use { input ->
@@ -142,7 +154,7 @@ object KokoroModelManager {
         tmpFile.renameTo(targetFile)
         completedFiles++
         _downloadProgress.value = completedFiles.toFloat() / totalFiles
-        Log.d(TAG, "Downloaded: $localName")
+        Log.w(TAG, "Downloaded: $localName (${targetFile.length()} bytes)")
       } catch (e: Exception) {
         tmpFile.delete()
         throw e
@@ -180,7 +192,7 @@ object KokoroModelManager {
 
       targetFile.parentFile?.mkdirs()
       val url = URL("$baseUrl$filePath")
-      Log.d(TAG, "Downloading espeak data: $url")
+      Log.w(TAG, "Downloading espeak data: $url")
 
       try {
         val connection = url.openConnection() as HttpURLConnection
@@ -189,15 +201,20 @@ object KokoroModelManager {
         connection.readTimeout = 60_000
         connection.connect()
 
+        Log.w(TAG, "espeak HTTP ${connection.responseCode} ${connection.responseMessage} for $filePath")
+
         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
           connection.inputStream.use { input ->
             FileOutputStream(targetFile).use { output ->
               input.copyTo(output)
             }
           }
+          Log.w(TAG, "espeak downloaded: $filePath (${targetFile.length()} bytes)")
+        } else {
+          Log.e(TAG, "espeak download failed: HTTP ${connection.responseCode} for $filePath")
         }
       } catch (e: Exception) {
-        Log.w(TAG, "Failed to download espeak file: $filePath", e)
+        Log.e(TAG, "Failed to download espeak file: $filePath - ${e.javaClass.simpleName}: ${e.message}", e)
       }
     }
   }

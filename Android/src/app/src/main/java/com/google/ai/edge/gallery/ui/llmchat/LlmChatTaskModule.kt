@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
@@ -232,6 +233,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     val context = LocalContext.current
     val kokoroStatus by com.google.ai.edge.gallery.tts.KokoroModelManager.status.collectAsState()
     val kokoroProgress by com.google.ai.edge.gallery.tts.KokoroModelManager.downloadProgress.collectAsState()
+    val kokoroError by com.google.ai.edge.gallery.tts.KokoroModelManager.lastError.collectAsState()
     val kokoroScope = rememberCoroutineScope()
 
     // Initialize Kokoro TTS when Voice task opens (downloads model if needed).
@@ -319,6 +321,22 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                     "Voice model download failed.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
+                  )
+                  kokoroError?.let { err ->
+                    Text(
+                      err,
+                      style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontSize = 10.sp,
+                      ),
+                      color = MaterialTheme.colorScheme.error,
+                      maxLines = 3,
+                    )
+                  }
+                  Text(
+                    "Check Settings → Debug logs for details.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                   )
                   androidx.compose.material3.OutlinedButton(
                     onClick = {

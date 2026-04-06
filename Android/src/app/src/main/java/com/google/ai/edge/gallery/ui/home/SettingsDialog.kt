@@ -106,6 +106,7 @@ fun SettingsDialog(
   val focusRequester = remember { FocusRequester() }
   val interactionSource = remember { MutableInteractionSource() }
   var showTos by remember { mutableStateOf(false) }
+  var showDebugLogs by remember { mutableStateOf(false) }
 
   Dialog(onDismissRequest = onDismissed) {
     val focusManager = LocalFocusManager.current
@@ -309,6 +310,17 @@ fun SettingsDialog(
             }
           }
 
+          // Debug logs
+          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+            Text(
+              "Debug logs",
+              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+            )
+            OutlinedButton(onClick = { showDebugLogs = true }) {
+              Text("View logs")
+            }
+          }
+
           // Tos
           Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
             Text(
@@ -345,6 +357,10 @@ fun SettingsDialog(
 
   if (showTos) {
     AppTosDialog(onTosAccepted = { showTos = false }, viewingMode = true)
+  }
+
+  if (showDebugLogs) {
+    DebugLogsDialog(onDismissed = { showDebugLogs = false })
   }
 }
 
