@@ -82,6 +82,14 @@ All changes are in a single commit on `echo` branch:
 
 ## Building
 
+APKs are built automatically via GitHub Actions on every push to `echo` or `main`.
+
+- **Workflow:** `.github/workflows/build_android.yaml`
+- **Triggers:** Push to `echo`/`main` (when `Android/` files change), or manual via `workflow_dispatch`
+- **Artifacts:** Debug and Release APKs uploaded as GitHub Actions artifacts (30 day retention)
+- **Download:** Go to Actions tab > latest run > Artifacts section > `echo-debug-apk` or `echo-release-apk`
+
+Manual local build:
 ```bash
 cd Android/src
 ./gradlew assembleDebug
