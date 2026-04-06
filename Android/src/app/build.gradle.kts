@@ -46,6 +46,10 @@ android {
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk {
+      abiFilters += "arm64-v8a"
+    }
   }
 
   signingConfigs {
@@ -132,7 +136,6 @@ dependencies {
   implementation(libs.firebase.messaging)
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)
-  implementation(libs.sherpa.onnx)
   kapt(libs.hilt.android.compiler)
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)

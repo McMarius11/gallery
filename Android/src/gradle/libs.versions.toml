@@ -39,7 +39,6 @@ securityCrypto = "1.1.0"
 kotlinReflect = "2.2.21"
 moshi = "1.15.2"
 ksp = "2.3.6"
-sherpaOnnx = "1.10.39"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -92,7 +91,6 @@ firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
 moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
-sherpa-onnx = { group = "com.k2fsa.sherpa", name = "onnx", version.ref = "sherpaOnnx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

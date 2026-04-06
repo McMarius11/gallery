@@ -5,6 +5,10 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.util.Log
+import com.k2fsa.sherpa.onnx.OfflineTts
+import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,29 +19,29 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private const val TAG = "KokoroTtsEngine"
-private const val SAMPLE_RATE = 22050
-private const val SPEAKER_ID = 0 // Default voice
+private const val SPEAKER_ID = 0
 
 class KokoroTtsEngine : TtsEngine {
-  private var offlineTts: com.k2fsa.sherpa.onnx.OfflineTts? = null
+  private var offlineTts: OfflineTts? = null
   private var audioTrack: AudioTrack? = null
   private var playbackJob: Job? = null
   private var scope: CoroutineScope? = null
   private var initialized = false
+  private var sampleRate = 22050
 
   override var onSpeakingDone: (() -> Unit)? = null
 
   override fun init(context: Context) {
     val modelDir = KokoroModelManager.getModelDir(context)
     if (!File(modelDir, "model.onnx").exists()) {
-      Log.w(TAG, "Kokoro model not found")
+      Log.w(TAG, "Kokoro model not found at ${modelDir.absolutePath}")
       return
     }
 
     try {
-      val config = com.k2fsa.sherpa.onnx.OfflineTtsConfig(
-        model = com.k2fsa.sherpa.onnx.OfflineTtsModelConfig(
-          kokoro = com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig(
+      val config = OfflineTtsConfig(
+        model = OfflineTtsModelConfig(
+          kokoro = OfflineTtsKokoroModelConfig(
             model = File(modelDir, "model.onnx").absolutePath,
             voices = File(modelDir, "voices.bin").absolutePath,
             tokens = File(modelDir, "tokens.txt").absolutePath,
@@ -48,10 +52,12 @@ class KokoroTtsEngine : TtsEngine {
           debug = false,
         ),
       )
-      offlineTts = com.k2fsa.sherpa.onnx.OfflineTts(config = config)
+
+      offlineTts = OfflineTts(config = config)
+      sampleRate = offlineTts!!.sampleRate()
       scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
       initialized = true
-      Log.d(TAG, "Kokoro TTS initialized successfully")
+      Log.d(TAG, "Kokoro TTS initialized, sampleRate=$sampleRate")
     } catch (e: Exception) {
       Log.e(TAG, "Failed to initialize Kokoro TTS", e)
       initialized = false
@@ -67,7 +73,6 @@ class KokoroTtsEngine : TtsEngine {
     playbackJob = scope?.launch {
       try {
         val cleanText = cleanMarkdown(text)
-        // Split into sentences for lower latency
         val sentences = splitIntoSentences(cleanText)
 
         val track = createAudioTrack()
@@ -78,7 +83,7 @@ class KokoroTtsEngine : TtsEngine {
           if (!isActive) break
           if (sentence.isBlank()) continue
 
-          val audio = offlineTts?.generateWithCallback(
+          offlineTts?.generateWithCallback(
             text = sentence,
             sid = SPEAKER_ID,
             speed = 1.0f,
@@ -90,7 +95,6 @@ class KokoroTtsEngine : TtsEngine {
           )
         }
 
-        // Wait for playback to finish
         if (isActive) {
           track.stop()
         }
@@ -102,7 +106,9 @@ class KokoroTtsEngine : TtsEngine {
         }
       } catch (e: Exception) {
         Log.e(TAG, "Error during Kokoro TTS playback", e)
-        audioTrack?.release()
+        try {
+          audioTrack?.release()
+        } catch (_: Exception) {}
         audioTrack = null
       }
     }
@@ -124,7 +130,7 @@ class KokoroTtsEngine : TtsEngine {
     stop()
     scope?.cancel()
     scope = null
-    offlineTts?.release()
+    offlineTts?.free()
     offlineTts = null
     initialized = false
   }
@@ -133,7 +139,7 @@ class KokoroTtsEngine : TtsEngine {
 
   private fun createAudioTrack(): AudioTrack {
     val bufferSize = AudioTrack.getMinBufferSize(
-      SAMPLE_RATE,
+      sampleRate,
       AudioFormat.CHANNEL_OUT_MONO,
       AudioFormat.ENCODING_PCM_FLOAT,
     )
@@ -146,7 +152,7 @@ class KokoroTtsEngine : TtsEngine {
       )
       .setAudioFormat(
         AudioFormat.Builder()
-          .setSampleRate(SAMPLE_RATE)
+          .setSampleRate(sampleRate)
           .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
           .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
           .build()
