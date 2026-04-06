@@ -45,6 +45,14 @@ object KokoroModelManager {
     return File(context.filesDir, MODEL_DIR)
   }
 
+  /** Reset error state so ensureModelReady can be called again. */
+  fun resetForRetry() {
+    if (_status.value == KokoroModelStatus.ERROR) {
+      _status.value = KokoroModelStatus.NOT_DOWNLOADED
+      _downloadProgress.value = 0f
+    }
+  }
+
   fun checkModelReady(context: Context): Boolean {
     val modelDir = getModelDir(context)
     if (!modelDir.exists()) return false
@@ -79,12 +87,12 @@ object KokoroModelManager {
     // Download individual files from sherpa-onnx releases
     // The sherpa-onnx Kokoro model comes as individual files
     val files = mapOf(
-      "model.onnx" to "kokoro-en-v1.0-int8/model.int8.onnx",
-      "voices.bin" to "kokoro-en-v1.0-int8/voices.bin",
-      "tokens.txt" to "kokoro-en-v1.0-int8/tokens.txt",
+      "model.onnx" to "model.onnx",
+      "voices.bin" to "voices.bin",
+      "tokens.txt" to "tokens.txt",
     )
 
-    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v1.0-int8/resolve/main/"
+    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v0.19/resolve/main/"
 
     var completedFiles = 0
     val totalFiles = files.size
@@ -109,7 +117,7 @@ object KokoroModelManager {
         connection.connect()
 
         if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-          throw Exception("HTTP ${connection.responseCode} for $url")
+          throw Exception("HTTP ${connection.responseCode} for $url (${connection.responseMessage})")
         }
 
         val contentLength = connection.contentLengthLong
@@ -155,7 +163,7 @@ object KokoroModelManager {
     val dataDir = File(modelDir, "espeak-ng-data")
     dataDir.mkdirs()
 
-    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v1.0-int8/resolve/main/"
+    val baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-kokoro-en-v0.19/resolve/main/"
 
     // Download the phontab, intonation, and phondata files
     val espeakFiles = listOf(

@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,7 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // AI Chat.
@@ -230,6 +232,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     val context = LocalContext.current
     val kokoroStatus by com.google.ai.edge.gallery.tts.KokoroModelManager.status.collectAsState()
     val kokoroProgress by com.google.ai.edge.gallery.tts.KokoroModelManager.downloadProgress.collectAsState()
+    val kokoroScope = rememberCoroutineScope()
 
     // Initialize Kokoro TTS when Voice task opens (downloads model if needed).
     LaunchedEffect(Unit) {
@@ -313,10 +316,30 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                 com.google.ai.edge.gallery.tts.KokoroModelStatus.ERROR -> {
                   Spacer(modifier = Modifier.height(8.dp))
                   Text(
-                    "Voice model download failed. Will retry on next launch.",
+                    "Voice model download failed.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                   )
+                  androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                      com.google.ai.edge.gallery.tts.KokoroModelManager.resetForRetry()
+                      kokoroScope.launch {
+                        com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
+                        if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
+                          com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
+                          com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
+                        ) {
+                          val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
+                          kokoroEngine.init(context)
+                          if (kokoroEngine.isReady()) {
+                            com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
+                          }
+                        }
+                      }
+                    },
+                  ) {
+                    Text("Retry")
+                  }
                 }
                 else -> {}
               }
