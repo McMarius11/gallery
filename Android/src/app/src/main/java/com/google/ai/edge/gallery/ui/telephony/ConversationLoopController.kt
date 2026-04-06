@@ -134,6 +134,8 @@ class ConversationLoopController(
 
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
       Log.e(TAG, "Too many consecutive errors, stopping loop")
+      isActive = false
+      holdToDictateViewModel.cancelSpeechRecognition()
       telephonyViewModel.setPhase(CallPhase.IDLE)
       telephonyViewModel.setError("Speech recognition unavailable. Check microphone permission and internet connection.")
       return

@@ -24,6 +24,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.ai.edge.gallery.tts.SherpaAsrEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -51,18 +52,31 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   protected val _uiState = MutableStateFlow(HoldToDictateUiState())
   val uiState = _uiState.asStateFlow()
 
-  private val speechRecognizer: SpeechRecognizer
+  private val speechRecognizer: SpeechRecognizer?
   private val recognizerIntent: Intent
   private var onRecognitionDone: ((String) -> Unit)? = null
   private var onAmplitudeChanged: ((Int) -> Unit)? = null
   private var onErrorCallback: ((Int) -> Unit)? = null
 
+  private val useSherpaAsr: Boolean
+  private var sherpaAsrEngine: SherpaAsrEngine? = null
+
   init {
-    // Initialize SpeechRecognizer
-    speechRecognizer =
-      SpeechRecognizer.createSpeechRecognizer(context).apply {
-        setRecognitionListener(this@HoldToDictateViewModel)
-      }
+    val googleAvailable = SpeechRecognizer.isRecognitionAvailable(context)
+    useSherpaAsr = !googleAvailable
+    Log.w(TAG, "Google SpeechRecognizer available: $googleAvailable, useSherpaAsr: $useSherpaAsr")
+
+    if (!useSherpaAsr) {
+      // Initialize Google SpeechRecognizer
+      speechRecognizer =
+        SpeechRecognizer.createSpeechRecognizer(context).apply {
+          setRecognitionListener(this@HoldToDictateViewModel)
+        }
+    } else {
+      speechRecognizer = null
+      // Initialize sherpa-onnx ASR engine (lazy - will init on first use)
+      sherpaAsrEngine = SherpaAsrEngine(context)
+    }
 
     // Initialize Intent (used for language/model settings)
     recognizerIntent =
@@ -83,9 +97,42 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     this.onAmplitudeChanged = onAmplitudeChanged
     this.onErrorCallback = onError
 
-    speechRecognizer.startListening(recognizerIntent)
+    if (useSherpaAsr) {
+      startSherpaRecognition(onDone, onAmplitudeChanged, onError)
+    } else {
+      speechRecognizer?.startListening(recognizerIntent)
+      setRecognizedText(text = "")
+      setRecognizing(recognizing = true)
+    }
+  }
+
+  private fun startSherpaRecognition(
+    onDone: (String) -> Unit,
+    onAmplitudeChanged: (Int) -> Unit,
+    onError: ((Int) -> Unit)? = null,
+  ) {
+    val engine = sherpaAsrEngine ?: return
     setRecognizedText(text = "")
     setRecognizing(recognizing = true)
+
+    engine.startListening(
+      onAmplitudeChanged = { amplitude ->
+        onAmplitudeChanged(amplitude)
+      },
+      onResult = { text ->
+        setRecognizedText(text)
+        setRecognizing(false)
+        onDone(text)
+      },
+      onError = { errorCode ->
+        Log.w(TAG, "Sherpa ASR error: $errorCode")
+        setRecognizing(false)
+        onError?.invoke(errorCode)
+        if (onError == null) {
+          onDone("")
+        }
+      },
+    )
   }
 
   fun stopSpeechRecognition() {
@@ -98,6 +145,9 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
 
   fun cancelSpeechRecognition() {
     setRecognizing(recognizing = false)
+    if (useSherpaAsr) {
+      sherpaAsrEngine?.stopListening()
+    }
   }
 
   /** Signal that listening should auto-restart (e.g. after TTS finishes). */
@@ -133,8 +183,13 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   override fun onError(error: Int) {
     Log.w(TAG, "SpeechRecognizer error: $error")
     setRecognizing(false)
-    onErrorCallback?.invoke(error)
-    onRecognitionDone?.invoke("")
+    if (onErrorCallback != null) {
+      onErrorCallback?.invoke(error)
+      // Don't call onRecognitionDone — the error handler decides what to do.
+      // Calling both causes a restart loop in ConversationLoopController.
+    } else {
+      onRecognitionDone?.invoke("")
+    }
   }
 
   override fun onResults(results: Bundle?) {

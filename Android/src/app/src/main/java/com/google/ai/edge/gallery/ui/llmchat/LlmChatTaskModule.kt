@@ -236,18 +236,27 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     val kokoroError by com.google.ai.edge.gallery.tts.KokoroModelManager.lastError.collectAsState()
     val kokoroScope = rememberCoroutineScope()
 
-    // Initialize Kokoro TTS when Voice task opens (downloads model if needed).
+    val asrStatus by com.google.ai.edge.gallery.tts.AsrModelManager.status.collectAsState()
+    val asrProgress by com.google.ai.edge.gallery.tts.AsrModelManager.downloadProgress.collectAsState()
+
+    // Initialize Kokoro TTS and Whisper ASR when Voice task opens.
     LaunchedEffect(Unit) {
-      com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
-      if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
-        com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
-        com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
-      ) {
-        val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
-        kokoroEngine.init(context)
-        if (kokoroEngine.isReady()) {
-          com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
+      // Download both models in parallel
+      kotlinx.coroutines.launch {
+        com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
+        if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
+          com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
+          com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
+        ) {
+          val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
+          kokoroEngine.init(context)
+          if (kokoroEngine.isReady()) {
+            com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
+          }
         }
+      }
+      kotlinx.coroutines.launch {
+        com.google.ai.edge.gallery.tts.AsrModelManager.ensureModelReady(context)
       }
     }
 
@@ -353,6 +362,42 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                             com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
                           }
                         }
+                      }
+                    },
+                  ) {
+                    Text("Retry")
+                  }
+                }
+                else -> {}
+              }
+
+              // ASR (Whisper) download indicator
+              when (asrStatus) {
+                com.google.ai.edge.gallery.tts.AsrModelStatus.DOWNLOADING -> {
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    "Downloading speech model… ${(asrProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                  androidx.compose.material3.LinearProgressIndicator(
+                    progress = { asrProgress },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                  )
+                }
+                com.google.ai.edge.gallery.tts.AsrModelStatus.ERROR -> {
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    "Speech model download failed.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                  )
+                  androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                      com.google.ai.edge.gallery.tts.AsrModelManager.resetForRetry()
+                      kokoroScope.launch {
+                        com.google.ai.edge.gallery.tts.AsrModelManager.ensureModelReady(context)
                       }
                     },
                   ) {
