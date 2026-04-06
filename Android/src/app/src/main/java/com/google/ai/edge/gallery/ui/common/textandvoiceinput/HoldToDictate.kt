@@ -92,6 +92,19 @@ fun HoldToDictate(
     }
   }
 
+  // Auto-listen after TTS finishes speaking.
+  LaunchedEffect(uiState.autoListenRequested) {
+    if (uiState.autoListenRequested && recordAudioPermissionGranted && enabled && !uiState.recognizing) {
+      viewModel.consumeAutoListen()
+      viewModel.startSpeechRecognition(
+        onDone = onDone,
+        onAmplitudeChanged = onAmplitudeChanged,
+      )
+    } else if (uiState.autoListenRequested) {
+      viewModel.consumeAutoListen()
+    }
+  }
+
   if (recordAudioPermissionGranted) {
     Box(
       modifier =

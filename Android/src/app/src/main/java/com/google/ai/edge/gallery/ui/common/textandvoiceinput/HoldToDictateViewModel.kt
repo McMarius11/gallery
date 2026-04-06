@@ -16,6 +16,7 @@
 package com.google.ai.edge.gallery.ui.common.textandvoiceinput
 
 import android.content.Context
+import android.util.Log
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -38,7 +39,11 @@ private const val AUDIO_METER_MIN_DB = -2.0f
 private const val AUDIO_METER_MAX_DB = 100.0f
 
 /** The UI state of the HoldToDictateViewModel. */
-data class HoldToDictateUiState(val recognizing: Boolean = false, val recognizedText: String = "")
+data class HoldToDictateUiState(
+  val recognizing: Boolean = false,
+  val recognizedText: String = "",
+  val autoListenRequested: Boolean = false,
+)
 
 @HiltViewModel
 class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val context: Context) :
@@ -89,6 +94,16 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     setRecognizing(recognizing = false)
   }
 
+  /** Signal that listening should auto-restart (e.g. after TTS finishes). */
+  fun requestAutoListen() {
+    _uiState.update { it.copy(autoListenRequested = true) }
+  }
+
+  /** Consume the auto-listen request so it doesn't fire again. */
+  fun consumeAutoListen() {
+    _uiState.update { it.copy(autoListenRequested = false) }
+  }
+
   fun setRecognizing(recognizing: Boolean) {
     _uiState.update { uiState.value.copy(recognizing = recognizing) }
   }
@@ -109,7 +124,11 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
 
   override fun onEndOfSpeech() {}
 
-  override fun onError(error: Int) {}
+  override fun onError(error: Int) {
+    Log.w(TAG, "SpeechRecognizer error: $error")
+    setRecognizing(false)
+    onRecognitionDone?.invoke("")
+  }
 
   override fun onResults(results: Bundle?) {
     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)

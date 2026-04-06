@@ -50,4 +50,8 @@ object TtsManager {
   }
 
   fun isReady(): Boolean = engine.isReady()
+
+  fun getAvailableVoices(): List<Pair<Int, String>> = engine.getAvailableVoices()
+
+  fun setVoice(id: Int) = engine.setVoice(id)
 }

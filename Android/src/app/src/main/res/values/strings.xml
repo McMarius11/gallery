@@ -105,7 +105,10 @@
   <string name="introducing" translatable="false">Introducing</string>
   <string name="invalid_response" translatable="false">Invalid response</string>
   <string name="learn_more" translatable="false">Learn more and see model license</string>
-  <string name="listening" translatable="false">Listening...</string>
+  <string name="listening" translatable="false">Listening…</string>
+  <string name="speak_now" translatable="false">Speak now…</string>
+  <string name="tap_to_stop" translatable="false">Tap to stop</string>
+  <string name="select_voice" translatable="false">Select Voice</string>
   <string name="litert_community_label" translatable="false">LiteRT community</string>
   <string name="loading_model_list" translatable="false">Loading model list...</string>
   <string name="logs_viewer_filter_text_input_placeholder" translatable="false">Filter logs</string>

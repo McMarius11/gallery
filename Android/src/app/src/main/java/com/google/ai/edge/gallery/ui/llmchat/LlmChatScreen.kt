@@ -46,6 +46,8 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatMessageImage
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatView
 import com.google.ai.edge.gallery.ui.common.chat.SendMessageTrigger
+import com.google.ai.edge.gallery.ui.common.chat.TtsManager
+import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.emptyStateContent
 import com.google.ai.edge.gallery.ui.theme.emptyStateTitle
@@ -192,6 +194,8 @@ fun ChatViewWrapper(
   val context = LocalContext.current
   val task = modelManagerViewModel.getTaskById(id = taskId)!!
   val allowThinking = task.allowThinking()
+  val holdToDictateViewModel: HoldToDictateViewModel? =
+    if (voiceMode) hiltViewModel() else null
 
   ChatView(
     task = task,
@@ -232,7 +236,10 @@ fun ChatViewWrapper(
               val msgs = viewModel.uiState.value.messagesByModel[model.name]
               val lastAgentMessage = msgs?.lastOrNull { it is ChatMessageText && it.side == com.google.ai.edge.gallery.ui.common.chat.ChatSide.AGENT }
               if (lastAgentMessage is ChatMessageText) {
-                com.google.ai.edge.gallery.ui.common.chat.TtsManager.speak(lastAgentMessage.content)
+                TtsManager.speak(lastAgentMessage.content) {
+                  // After TTS finishes: signal auto-restart listening
+                  holdToDictateViewModel?.requestAutoListen()
+                }
               }
             }
             onGenerateResponseDone(model)

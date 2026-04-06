@@ -9,4 +9,8 @@ interface TtsEngine {
   fun stop()
   fun shutdown()
   fun isReady(): Boolean
+  /** Returns list of (speakerId, displayName) pairs. Empty if engine doesn't support voice selection. */
+  fun getAvailableVoices(): List<Pair<Int, String>> = emptyList()
+  /** Set the active voice by speaker ID. */
+  fun setVoice(id: Int) {}
 }

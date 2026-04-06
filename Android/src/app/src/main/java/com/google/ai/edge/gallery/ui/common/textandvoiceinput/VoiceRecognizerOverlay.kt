@@ -66,7 +66,7 @@ fun VoiceRecognizerOverlay(
 
     // Recognized text.
     Text(
-      uiState.recognizedText.ifEmpty { stringResource(R.string.listening) },
+      uiState.recognizedText.ifEmpty { stringResource(R.string.speak_now) },
       modifier =
         Modifier.padding(horizontal = 16.dp)
           .padding(bottom = (48.dp + bottomPadding) / 2)
@@ -109,7 +109,7 @@ fun VoiceRecognizerOverlay(
             .height(48.dp),
         contentAlignment = Alignment.Center,
       ) {
-        Text(stringResource(R.string.listening), color = Color.White)
+        Text(stringResource(R.string.tap_to_stop), color = Color.White)
       }
     }
   }

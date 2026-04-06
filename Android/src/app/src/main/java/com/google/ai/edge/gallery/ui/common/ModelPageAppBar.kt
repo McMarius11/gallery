@@ -51,11 +51,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.R
+import com.google.ai.edge.gallery.data.BottomSheetSelectorConfig
+import com.google.ai.edge.gallery.data.BottomSheetSelectorItem
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.ui.common.chat.TtsManager
 import com.google.ai.edge.gallery.data.convertValueToTargetType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
@@ -215,6 +218,27 @@ fun ModelPageAppBar(
     if (!task.allowThinking()) {
       modelConfigs.removeIf { it.key == ConfigKeys.ENABLE_THINKING }
     }
+    // Add voice selection for Voice task when Kokoro is available.
+    if (task.id == BuiltInTaskId.LLM_VOICE) {
+      val voices = TtsManager.getAvailableVoices()
+      if (voices.isNotEmpty()) {
+        modelConfigs.add(
+          BottomSheetSelectorConfig(
+            key = ConfigKeys.VOICE_SELECTION,
+            defaultValue = voices.first().second,
+            options = voices.map { BottomSheetSelectorItem(it.second) },
+            bottomSheetTitleResId = R.string.select_voice,
+            needReinitialization = false,
+          )
+        )
+        // Initialize configValues for voice selection if not present.
+        if (!model.configValues.containsKey(ConfigKeys.VOICE_SELECTION.label)) {
+          model.configValues = model.configValues.toMutableMap().apply {
+            put(ConfigKeys.VOICE_SELECTION.label, voices.first().second)
+          }
+        }
+      }
+    }
     ConfigDialog(
       title = "Configurations",
       configs = modelConfigs,
@@ -223,6 +247,16 @@ fun ModelPageAppBar(
       onOk = { curConfigValues, oldSystemPrompt, newSystemPrompt ->
         // Hide config dialog.
         showConfigDialog = false
+
+        // Apply voice selection if changed.
+        val voiceValue = curConfigValues[ConfigKeys.VOICE_SELECTION.label]
+        if (voiceValue != null) {
+          val voices = TtsManager.getAvailableVoices()
+          val selectedVoice = voices.find { it.second == voiceValue as String }
+          if (selectedVoice != null) {
+            TtsManager.setVoice(selectedVoice.first)
+          }
+        }
 
         // Check if the configs are changed or not. Also check if the model needs to be
         // re-initialized.

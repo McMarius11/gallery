@@ -19,10 +19,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private const val TAG = "KokoroTtsEngine"
-private const val SPEAKER_ID = 0
 
 class KokoroTtsEngine : TtsEngine {
   private var offlineTts: OfflineTts? = null
+  private var speakerId: Int = 0
   private var audioTrack: AudioTrack? = null
   private var playbackJob: Job? = null
   private var scope: CoroutineScope? = null
@@ -67,8 +67,8 @@ class KokoroTtsEngine : TtsEngine {
   override fun speak(text: String, onDone: (() -> Unit)?) {
     if (!initialized || text.isBlank()) return
 
-    onSpeakingDone = onDone
     stop()
+    onSpeakingDone = onDone
 
     playbackJob = scope?.launch {
       try {
@@ -85,7 +85,7 @@ class KokoroTtsEngine : TtsEngine {
 
           offlineTts?.generateWithCallback(
             text = sentence,
-            sid = SPEAKER_ID,
+            sid = speakerId,
             speed = 1.0f,
             callback = { samples ->
               if (!isActive) return@generateWithCallback 0
@@ -137,6 +137,18 @@ class KokoroTtsEngine : TtsEngine {
 
   override fun isReady(): Boolean = initialized
 
+  override fun getAvailableVoices(): List<Pair<Int, String>> {
+    val numSpeakers = offlineTts?.numSpeakers() ?: 0
+    return (0 until numSpeakers).map { id ->
+      id to (VOICE_NAMES[id] ?: "Voice $id")
+    }
+  }
+
+  override fun setVoice(id: Int) {
+    speakerId = id
+    Log.d(TAG, "Voice set to speaker $id (${VOICE_NAMES[id] ?: "unknown"})")
+  }
+
   private fun createAudioTrack(): AudioTrack {
     val bufferSize = AudioTrack.getMinBufferSize(
       sampleRate,
@@ -165,5 +177,21 @@ class KokoroTtsEngine : TtsEngine {
   private fun splitIntoSentences(text: String): List<String> {
     return text.split(Regex("(?<=[.!?])\\s+"))
       .filter { it.isNotBlank() }
+  }
+
+  companion object {
+    val VOICE_NAMES = mapOf(
+      0 to "Alloy (Female)",
+      1 to "Bella (Female)",
+      2 to "Nicole (Female)",
+      3 to "Sarah (Female)",
+      4 to "Sky (Female)",
+      5 to "Adam (Male)",
+      6 to "Michael (Male)",
+      7 to "Emma (British F)",
+      8 to "Isabella (British F)",
+      9 to "George (British M)",
+      10 to "Lewis (British M)",
+    )
   }
 }

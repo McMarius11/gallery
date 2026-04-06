@@ -76,6 +76,7 @@ object ConfigKeys {
   val PREFILL_TOKENS = ConfigKey("prefill_tokens", "Prefill tokens")
   val DECODE_TOKENS = ConfigKey("decode_tokens", "Decode tokens")
   val NUMBER_OF_RUNS = ConfigKey("number_of_runs", "Number of runs")
+  val VOICE_SELECTION = ConfigKey("voice_selection", "Voice")
 }
 
 /**
@@ -162,6 +163,7 @@ class BottomSheetSelectorConfig(
   override val defaultValue: String,
   val options: List<BottomSheetSelectorItem>,
   @StringRes val bottomSheetTitleResId: Int? = null,
+  override val needReinitialization: Boolean = true,
 ) :
   Config(
     type = ConfigEditorType.BOTTOMSHEET_SELECTOR,
