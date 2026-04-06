@@ -123,9 +123,9 @@ fun ChatPanel(
   emptyStateComposable: @Composable (Model) -> Unit = {},
   voiceMode: Boolean = false,
 ) {
-  val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel? =
-    if (voiceMode) androidx.hilt.navigation.compose.hiltViewModel() else null
-  val holdToDictateUiState = holdToDictateViewModel?.uiState?.collectAsState()
+  val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel =
+    androidx.hilt.navigation.compose.hiltViewModel()
+  val holdToDictateUiState by holdToDictateViewModel.uiState.collectAsState()
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val messages = uiState.messagesByModel[selectedModel.name] ?: listOf()
@@ -269,9 +269,9 @@ fun ChatPanel(
     }
 
     // Voice recognizer overlay during speech recognition.
-    if (voiceMode && holdToDictateViewModel != null && holdToDictateUiState != null) {
+    if (voiceMode) {
       androidx.compose.animation.AnimatedVisibility(
-        visible = holdToDictateUiState.value.recognizing,
+        visible = holdToDictateUiState.recognizing,
         enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
         exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 100, easing = androidx.compose.animation.core.FastOutSlowInEasing, delayMillis = 300)),
       ) {

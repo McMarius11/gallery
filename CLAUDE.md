@@ -61,10 +61,18 @@ All changes are in a single commit on `echo` branch:
    - Strips markdown before speaking
    - Triggered in `ChatViewWrapper.onDone` callback when `voiceMode = true`
 
-6. **Voice mode input** - Hold-to-dictate as default input in Voice tile
+6. **Voice mode input** - Tap-to-speak as default input in Voice tile
    - `voiceMode` flag flows: `LlmChatScreen` -> `ChatViewWrapper` -> `ChatView` -> `ChatPanel` -> `MessageInputText`
-   - Keyboard/voice toggle via icon button when in voice mode
-   - Uses existing `HoldToDictateViewModel` (Hilt-injected)
+   - Tap mic button to start listening, SpeechRecognizer auto-stops on silence
+   - VoiceRecognizerOverlay shows full-screen feedback during recognition
+   - TTS speaks response, then conversation can continue
+   - Keyboard/voice toggle via icon button
+   - Uses `HoldToDictateViewModel` (Hilt-injected, always created unconditionally)
+
+7. **System prompt editing** - Both Chat and Voice tiles allow editing via settings icon
+   - Settings icon (gear) → "System prompt" tab in config dialog
+   - System prompt preserved on session reset
+   - Changes applied immediately via `resetSession(systemInstruction = ...)`
 
 ## Key Files
 
@@ -91,6 +99,8 @@ Personas are defined as `defaultSystemPrompt` in task definitions in `LlmChatTas
 
 To customize Maya's personality, edit the `defaultSystemPrompt` string in `LlmVoiceTask`.
 The system prompt is passed to the LLM via `LlmChatModelHelper.initialize(systemInstruction = ...)`.
+
+Users can also edit the persona at runtime: tap the settings icon (gear) in the top app bar → "System prompt" tab.
 
 ## Building
 

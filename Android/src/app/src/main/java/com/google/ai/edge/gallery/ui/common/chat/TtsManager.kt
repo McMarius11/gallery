@@ -18,11 +18,15 @@ package com.google.ai.edge.gallery.ui.common.chat
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 object TtsManager {
   private var tts: TextToSpeech? = null
   private var isInitialized = false
+
+  /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
+  var onSpeakingDone: (() -> Unit)? = null
 
   fun init(context: Context) {
     if (tts == null) {
@@ -30,14 +34,22 @@ object TtsManager {
         isInitialized = (status == TextToSpeech.SUCCESS)
         if (isInitialized) {
           tts?.language = Locale.US
+          tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+              onSpeakingDone?.invoke()
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {}
+          })
         }
       }
     }
   }
 
-  fun speak(text: String) {
+  fun speak(text: String, onDone: (() -> Unit)? = null) {
     if (isInitialized && text.isNotBlank()) {
-      // Strip basic markdown formatting before speaking.
+      onSpeakingDone = onDone
       val cleanText = text
         .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
         .replace(Regex("\\*(.*?)\\*"), "$1")
@@ -51,6 +63,7 @@ object TtsManager {
 
   fun stop() {
     tts?.stop()
+    onSpeakingDone = null
   }
 
   fun shutdown() {
@@ -58,5 +71,6 @@ object TtsManager {
     tts?.shutdown()
     tts = null
     isInitialized = false
+    onSpeakingDone = null
   }
 }

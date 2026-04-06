@@ -100,21 +100,17 @@ fun HoldToDictate(
             if (enabled) {
               Modifier.pointerInput(Unit) {
                 detectTapGestures(
-                  onPress = {
-                    viewModel.startSpeechRecognition(
-                      onDone = onDone,
-                      onAmplitudeChanged = onAmplitudeChanged,
-                    )
-                    try {
-                      awaitRelease()
-                    } catch (e: CancellationException) {
-                      // Move out of the button to cancel it.
-                      viewModel.cancelSpeechRecognition()
-                      return@detectTapGestures
+                  onTap = {
+                    if (uiState.recognizing) {
+                      // Tap while listening → stop recognition.
+                      viewModel.stopSpeechRecognition()
+                    } else {
+                      // Tap to start listening. SpeechRecognizer auto-stops on silence.
+                      viewModel.startSpeechRecognition(
+                        onDone = onDone,
+                        onAmplitudeChanged = onAmplitudeChanged,
+                      )
                     }
-
-                    // Release to stop recognition.
-                    viewModel.stopSpeechRecognition()
                   }
                 )
               }

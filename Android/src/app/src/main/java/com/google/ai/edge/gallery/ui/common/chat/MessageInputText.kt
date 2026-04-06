@@ -176,6 +176,7 @@ fun MessageInputText(
   onImageLimitExceeded: () -> Unit = {},
   voiceMode: Boolean = false,
   holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel? = null,
+  onVoiceConversationStarted: () -> Unit = {},
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current

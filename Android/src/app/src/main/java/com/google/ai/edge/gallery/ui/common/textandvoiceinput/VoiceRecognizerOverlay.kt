@@ -87,12 +87,12 @@ fun VoiceRecognizerOverlay(
         horizontalArrangement = Arrangement.SpaceBetween,
       ) {
         Text(
-          stringResource(R.string.release_to_send),
+          stringResource(R.string.listening),
           color = Color.Black,
           style = MaterialTheme.typography.labelMedium,
         )
         Text(
-          stringResource(R.string.slide_up_to_cancel),
+          "Tap mic to stop",
           color = Color.Black,
           style = MaterialTheme.typography.labelMedium,
         )

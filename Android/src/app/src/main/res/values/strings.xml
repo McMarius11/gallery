@@ -99,7 +99,7 @@
   <string name="generate_and_copy" translatable="false">Generate and copy</string>
   <string name="grant_permissions" translatable="false">Grant permissions</string>
   <string name="grant_record_audio_permission" translatable="false">Grant record audio permission</string>
-  <string name="hold_down_to_talk" translatable="false">Hold to talk</string>
+  <string name="hold_down_to_talk" translatable="false">Tap to speak</string>
   <string name="input_history" translatable="false">Input history</string>
   <string name="instructions" translatable="false">Instructions</string>
   <string name="introducing" translatable="false">Introducing</string>

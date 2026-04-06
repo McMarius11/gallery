@@ -99,9 +99,17 @@ class LlmChatTask @Inject constructor() : CustomTask {
   @Composable
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
+    var curSystemPrompt by androidx.compose.runtime.remember {
+      androidx.compose.runtime.mutableStateOf(task.defaultSystemPrompt)
+    }
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
+      allowEditingSystemPrompt = true,
+      curSystemPrompt = curSystemPrompt,
+      onSystemPromptChanged = { newPrompt ->
+        curSystemPrompt = newPrompt
+      },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {
           Column(
@@ -125,7 +133,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
 }
 
 @Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
+@InstallIn(SingletonComponent::class)
 internal object LlmChatTaskModule {
   @Provides
   @IntoSet
@@ -187,11 +195,19 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
   @Composable
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
+    var curSystemPrompt by androidx.compose.runtime.remember {
+      androidx.compose.runtime.mutableStateOf(task.defaultSystemPrompt)
+    }
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
       taskId = BuiltInTaskId.LLM_VOICE,
       voiceMode = true,
+      allowEditingSystemPrompt = true,
+      curSystemPrompt = curSystemPrompt,
+      onSystemPromptChanged = { newPrompt ->
+        curSystemPrompt = newPrompt
+      },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {
           Column(
@@ -202,7 +218,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
           ) {
             Text("Voice Chat", style = emptyStateTitle)
             Text(
-              "Talk with Echo using your voice. Hold to speak.",
+              "Tap the mic button to start talking with Maya.",
               style = emptyStateContent,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
               textAlign = TextAlign.Center,

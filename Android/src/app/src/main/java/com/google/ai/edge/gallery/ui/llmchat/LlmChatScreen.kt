@@ -227,10 +227,10 @@ fun ChatViewWrapper(
           audioMessages = audioMessages,
           onFirstToken = onFirstToken,
           onDone = {
-            // Speak the response in voice mode.
+            // In voice mode: speak the response, then auto-listen again.
             if (voiceMode) {
-              val messages = viewModel.uiState.value.messagesByModel[model.name]
-              val lastAgentMessage = messages?.lastOrNull { it is ChatMessageText && it.side == com.google.ai.edge.gallery.ui.common.chat.ChatSide.AGENT }
+              val msgs = viewModel.uiState.value.messagesByModel[model.name]
+              val lastAgentMessage = msgs?.lastOrNull { it is ChatMessageText && it.side == com.google.ai.edge.gallery.ui.common.chat.ChatSide.AGENT }
               if (lastAgentMessage is ChatMessageText) {
                 com.google.ai.edge.gallery.ui.common.chat.TtsManager.speak(lastAgentMessage.content)
               }
@@ -283,6 +283,12 @@ fun ChatViewWrapper(
           model = model,
           supportImage = showImagePicker,
           supportAudio = showAudioPicker,
+          systemInstruction =
+            if (curSystemPrompt.isNotEmpty()) {
+              com.google.ai.edge.litertlm.Contents.of(curSystemPrompt)
+            } else if (task.defaultSystemPrompt.isNotEmpty()) {
+              com.google.ai.edge.litertlm.Contents.of(task.defaultSystemPrompt)
+            } else null,
         )
       }
     },
