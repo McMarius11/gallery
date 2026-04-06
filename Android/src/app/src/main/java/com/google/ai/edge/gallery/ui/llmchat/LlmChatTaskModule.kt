@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -227,6 +228,8 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     val modelManagerUiState by myData.modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
     val context = LocalContext.current
+    val kokoroStatus by com.google.ai.edge.gallery.tts.KokoroModelManager.status.collectAsState()
+    val kokoroProgress by com.google.ai.edge.gallery.tts.KokoroModelManager.downloadProgress.collectAsState()
 
     // Initialize Kokoro TTS when Voice task opens (downloads model if needed).
     LaunchedEffect(Unit) {
@@ -291,6 +294,32 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
               )
+
+              // Kokoro TTS download indicator
+              when (kokoroStatus) {
+                com.google.ai.edge.gallery.tts.KokoroModelStatus.DOWNLOADING -> {
+                  Spacer(modifier = Modifier.height(8.dp))
+                  Text(
+                    "Downloading voice model… ${(kokoroProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                  androidx.compose.material3.LinearProgressIndicator(
+                    progress = { kokoroProgress },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                  )
+                }
+                com.google.ai.edge.gallery.tts.KokoroModelStatus.ERROR -> {
+                  Spacer(modifier = Modifier.height(8.dp))
+                  Text(
+                    "Voice model download failed. Will retry on next launch.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                  )
+                }
+                else -> {}
+              }
             }
           }
         },
