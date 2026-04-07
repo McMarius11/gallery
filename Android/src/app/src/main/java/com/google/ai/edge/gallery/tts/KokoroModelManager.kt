@@ -177,13 +177,16 @@ object KokoroModelManager {
 
     val baseUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/"
 
-    // Download the phontab, intonation, and phondata files
+    // Download the phontab, intonation, phondata, and language dictionary files
     val espeakFiles = listOf(
       "espeak-ng-data/phontab",
       "espeak-ng-data/phondata",
       "espeak-ng-data/phondata-manifest",
       "espeak-ng-data/intonations",
       "espeak-ng-data/phonindex",
+      // Language dictionary — required for phonemization. Without en_dict,
+      // generateWithCallback crashes when processing English text.
+      "espeak-ng-data/en_dict",
     )
 
     for (filePath in espeakFiles) {
