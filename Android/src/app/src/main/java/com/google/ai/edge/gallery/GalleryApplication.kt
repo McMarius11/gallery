@@ -18,9 +18,11 @@ package com.google.ai.edge.gallery
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.util.LocalCrashReportSenderFactory
+import com.google.ai.edge.gallery.util.NativeCrashHandler
 import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
 import org.acra.ACRA
@@ -37,6 +39,7 @@ class GalleryApplication : Application() {
   override fun attachBaseContext(base: Context) {
     super.attachBaseContext(base)
 
+    // ACRA: catches Java/Kotlin exceptions
     ACRA.init(this, CoreConfigurationBuilder()
       .setPluginLoader(SimplePluginLoader(LocalCrashReportSenderFactory::class.java))
       .setReportContent(
@@ -52,10 +55,16 @@ class GalleryApplication : Application() {
         ReportField.BRAND,
       )
     )
+
+    // xCrash: catches native SIGABRT/SIGSEGV crashes
+    NativeCrashHandler.init(this)
   }
 
   override fun onCreate() {
     super.onCreate()
+
+    // Check for native crash tombstones from previous run
+    NativeCrashHandler.checkPendingCrash(this)
 
     // Load saved theme.
     ThemeSettings.themeOverride.value = dataStoreRepository.readTheme()

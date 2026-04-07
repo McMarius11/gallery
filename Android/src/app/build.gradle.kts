@@ -137,6 +137,7 @@ dependencies {
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)
   implementation(libs.acra.core)
+  implementation(libs.xcrash)
   kapt(libs.hilt.android.compiler)
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)
