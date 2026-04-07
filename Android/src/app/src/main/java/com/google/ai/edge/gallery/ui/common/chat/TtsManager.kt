@@ -153,13 +153,18 @@ object TtsManager {
   }
 
   /**
-   * Stop playback and mark engine as needing re-init, but do NOT free()
-   * native resources. Use this for re-download flows where the model files
-   * will change but we can't safely free the native OfflineTts.
+   * Stop playback, fall back to Android TTS, and mark as needing Kokoro re-init.
+   * Does NOT free() native resources (that corrupts global native state).
+   * Use this for re-download flows where model files will be deleted.
    */
-  fun softReset() {
+  fun softReset(context: Context) {
     Log.w(TAG, "softReset() called, engine=${engine.javaClass.simpleName}")
     engine.stop()
+    // Switch to Android TTS fallback so speak() won't use the old Kokoro
+    // engine whose model files are about to be deleted.
+    val fallback = AndroidTtsEngine()
+    fallback.init(context)
+    engine = fallback
     kokoroInitialized = false
   }
 
