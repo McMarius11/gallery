@@ -169,9 +169,15 @@ fun HomeScreen(
   val uiState by modelManagerViewModel.uiState.collectAsState()
   var showSettingsDialog by remember { mutableStateOf(false) }
   var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
+  var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
+
+  // Check for app updates on first composition
+  LaunchedEffect(Unit) {
+    updateInfo = AppUpdateChecker.checkForUpdate(context)
+  }
 
   var tasks = uiState.tasks
 
@@ -515,6 +521,14 @@ fun HomeScreen(
       curThemeOverride = modelManagerViewModel.readThemeOverride(),
       modelManagerViewModel = modelManagerViewModel,
       onDismissed = { showSettingsDialog = false },
+    )
+  }
+
+  // App update dialog.
+  updateInfo?.let { info ->
+    AppUpdateDialog(
+      updateInfo = info,
+      onDismiss = { updateInfo = null },
     )
   }
 
