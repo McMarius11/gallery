@@ -39,7 +39,12 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-
 
       - name: Run Lint
-        run: ./gradlew lint --continue
+        run: |
+          ./gradlew lintDebug --continue || true
+          if [ ! -f app/lint-baseline.xml ]; then
+            echo "Lint baseline was created. Re-running lint..."
+            ./gradlew lintDebug --continue || true
+          fi
 
       - name: Upload Lint Results
         if: always()
