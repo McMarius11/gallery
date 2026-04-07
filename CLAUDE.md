@@ -31,6 +31,71 @@ git merge main
 git push origin echo
 ```
 
+## Building & CI/CD Pipeline
+
+### CI Pipeline (`.github/workflows/build_android.yaml`)
+
+On every push to `echo` or `main` (when `Android/` files change):
+
+1. **Lint & Unit Tests** job runs first:
+   - `./gradlew lintDebug --continue` (results uploaded as `lint-results` artifact)
+   - `./gradlew test --continue` (results uploaded as `test-results` artifact)
+   - Lint uses `abortOnError = false` so warnings don't block builds
+
+2. **Build Echo APK** job (depends on lint/test):
+   - Builds debug + release APKs
+   - Signs release APK using GitHub Secrets
+   - Renames APKs with version info: `echo-v1.0.11-abc1234-release.apk`
+   - Uploads both as GitHub Actions artifacts (30 day retention)
+
+3. **Auto GitHub Release** (only on push to `echo`):
+   - Creates a GitHub Release tagged `v{versionName}-{versionCode}` (e.g. `v1.0.11-23`)
+   - Attaches the signed release APK
+   - Overwrites existing release for the same version
+
+### In-App Auto-Update System
+
+The app checks for updates on startup via GitHub Releases API:
+- **`AppUpdateChecker.kt`**: Queries `/repos/mcmarius11/gallery/releases/latest`, compares `versionCode`
+- **`AppUpdateDialog.kt`**: Shows update dialog, downloads via `DownloadManager`, installs via `FileProvider`
+- Users can dismiss per-version (stored in `SharedPreferences`)
+- Requires `REQUEST_INSTALL_PACKAGES` permission in AndroidManifest
+
+### Versioning
+
+Version is defined in `Android/src/app/build.gradle.kts`:
+- `versionCode = 23` — integer, must increment for each release (used by auto-update)
+- `versionName = "1.0.11"` — user-facing version string
+- Release tag format: `v{versionName}-{versionCode}` (e.g. `v1.0.11-23`)
+
+**To release a new version:** Increment `versionCode` (and optionally `versionName`) in `build.gradle.kts`, commit, and push to `echo`. The CI will build, sign, and create the GitHub Release automatically. The app will detect the new version on next startup.
+
+### Signing
+
+Release APKs are signed via GitHub Secrets:
+- `SIGNING_KEYSTORE_BASE64` — base64-encoded `.jks` keystore
+- `SIGNING_KEYSTORE_PASSWORD`
+- `SIGNING_KEY_ALIAS`
+- `SIGNING_KEY_PASSWORD`
+
+### Manual Local Build
+
+```bash
+cd Android/src
+./gradlew assembleDebug
+# APK output: app/build/outputs/apk/debug/app-debug.apk
+
+./gradlew assembleRelease
+# APK output: app/build/outputs/apk/release/app-release.apk (debug-signed without secrets)
+```
+
+### Build Requirements
+
+- **JDK 21** (Temurin recommended)
+- **Android SDK** compileSdk 35, minSdk 31, targetSdk 35
+- **Architecture:** arm64-v8a only (native libs are arm64 only)
+- **Gradle 8.10.2** (via wrapper)
+
 ## What Was Changed (Echo vs Upstream)
 
 ### 1. Rebranded to "Echo"
@@ -116,12 +181,21 @@ Tap-to-speak as default input in Voice tile.
 - Keyboard/voice toggle via icon button
 - Uses `HoldToDictateViewModel` (Hilt-injected, always created unconditionally)
 
+### 13. In-App Auto-Update
+Checks GitHub Releases API on app start, shows update dialog if newer version exists.
+- **AppUpdateChecker** (`ui/home/AppUpdateChecker.kt`): GitHub API query, versionCode comparison, dismiss tracking
+- **AppUpdateDialog** (`ui/home/AppUpdateDialog.kt`): Download via DownloadManager, install via FileProvider
+- Wired into `HomeScreen.kt` via `LaunchedEffect`
+
 ## Key Files
 
 | File | Role |
 |------|------|
-| `ui/home/HomeScreen.kt` | Home screen with app title and task tiles |
+| `ui/home/HomeScreen.kt` | Home screen with app title, task tiles, and update check |
+| `ui/home/AppUpdateChecker.kt` | GitHub Releases API update checker |
+| `ui/home/AppUpdateDialog.kt` | Update download and install dialog |
 | `ui/home/DebugLogsDialog.kt` | In-app debug log viewer |
+| `ui/home/SettingsDialog.kt` | App settings (theme, etc.) |
 | `ui/llmchat/LlmChatTaskModule.kt` | Chat + Voice task definitions and Dagger modules |
 | `ui/llmchat/LlmChatScreen.kt` | Chat screen with voiceMode and TTS integration |
 | `ui/telephony/TelephonyCallScreen.kt` | Full-screen phone call UI |
@@ -143,6 +217,17 @@ Tap-to-speak as default input in Voice tile.
 
 All paths are relative to `Android/src/app/src/main/java/com/google/ai/edge/gallery/`.
 
+### Other Important Files
+
+| File | Role |
+|------|------|
+| `.github/workflows/build_android.yaml` | CI/CD pipeline: lint, test, build, release |
+| `Android/src/app/build.gradle.kts` | App config: version, signing, dependencies, lint |
+| `Android/src/app/src/main/AndroidManifest.xml` | Permissions, activities, providers |
+| `Android/src/app/src/main/res/xml/file_paths.xml` | FileProvider paths (images, APK downloads) |
+| `Android/src/app/src/main/jniLibs/arm64-v8a/` | Native libs: `libsherpa-onnx-jni.so`, `libonnxruntime.so` |
+| `Android/src/app/src/main/java/com/k2fsa/sherpa/onnx/` | sherpa-onnx Kotlin JNI wrappers |
+
 ## Personas / System Prompts
 
 Personas are defined as `defaultSystemPrompt` in task definitions in `LlmChatTaskModule.kt`, with presets in `PersonaPresets.kt`.
@@ -162,23 +247,6 @@ To customize Maya's personality, edit the `defaultSystemPrompt` string in `LlmVo
 
 Users can also edit the persona at runtime: tap the settings icon (gear) → "System prompt" tab.
 
-## Building
-
-APKs are built and **signed** automatically via GitHub Actions on every push to `echo` or `main`.
-
-- **Workflow:** `.github/workflows/build_android.yaml`
-- **Triggers:** Push to `echo`/`main` (when `Android/` files change), or manual via `workflow_dispatch`
-- **Signing:** Release APKs signed via GitHub Secrets (`SIGNING_KEYSTORE_BASE64`, `SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`)
-- **Artifacts:** Debug and Release APKs uploaded as GitHub Actions artifacts (30 day retention)
-- **Download:** Go to Actions tab > latest run > Artifacts section > `echo-debug-apk` or `echo-release-apk`
-
-Manual local build:
-```bash
-cd Android/src
-./gradlew assembleDebug
-# APK output: app/build/outputs/apk/debug/app-debug.apk
-```
-
 ## Architecture Notes
 
 - Tasks are registered via Dagger `@IntoSet` bindings as `CustomTask` implementations
@@ -190,4 +258,30 @@ cd Android/src
 - **ASR flow:** Voice input → HoldToDictateViewModel → (Google SpeechRecognizer OR SherpaAsrEngine) → text
 - **Call loop:** Listen (ASR) → Send to LLM → Get response → Speak (TTS) → Listen (repeat), with barge-in support
 - **Model downloads:** KokoroModelManager and AsrModelManager handle download from HuggingFace with progress tracking, error handling, and retry
-- sherpa-onnx JNI library (`libsherpa-onnx-jni.so`) used by both Kokoro TTS and Whisper ASR
+- **Update flow:** App start → AppUpdateChecker → GitHub API → compare versionCode → show AppUpdateDialog → DownloadManager → FileProvider install
+
+### sherpa-onnx Native Library
+
+- **Version:** v1.12.35
+- **Bundled as:** Pre-built `.so` files in `jniLibs/arm64-v8a/` (no Maven dependency)
+- **Files:** `libsherpa-onnx-jni.so` (5.1MB), `libonnxruntime.so` (19MB)
+- **Used by:** Both Kokoro TTS (`KokoroTtsEngine`) and Whisper ASR (`SherpaAsrEngine`)
+- **Kotlin wrappers:** `com/k2fsa/sherpa/onnx/` — must match the native lib version exactly
+- **CRITICAL:** If the Kotlin wrapper data classes don't match the JNI expectations of the native lib, it causes SIGABRT (not catchable by try/catch). Always update wrappers when changing the native lib version.
+
+### Crash Handling
+
+- **xCrash** catches both Java exceptions AND native SIGABRT/SIGSEGV
+- Initialized in `GalleryApplication.attachBaseContext()`
+- Crash tombstones checked on next app start via `NativeCrashHandler.checkPendingCrash()`
+- **SherpaAsrEngine** has `initFailed` flag to prevent repeated native crashes — if init fails, it won't retry until app restart
+- **AsrModelManager** validates model file sizes (not just existence) to detect corrupt downloads
+
+### Known Pitfalls
+
+- **Native SIGABRT from sherpa-onnx:** `OfflineRecognizer.newFromFile()` and `getResult()` can crash with SIGABRT if model files are corrupt or Kotlin wrappers don't match the native lib. Cannot be caught by try/catch. The `initFailed` flag in SherpaAsrEngine prevents repeated crashes.
+- **Model file corruption:** HuggingFace downloads can be truncated. `AsrModelManager.checkModelReady()` validates minimum file sizes. Corrupt files are auto-deleted for re-download.
+- **Kotlin compiler flags:** Using `-Xcontext-parameters` (not the deprecated `-Xcontext-receivers`)
+- **hiltViewModel import:** Use `androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel` (the `navigation.compose` variant is deprecated)
+- **AndroidManifest:** Don't add `package=` attribute — it's set via `namespace` in `build.gradle.kts`
+- **Lint:** `abortOnError = false` in build.gradle.kts — lint reports warnings but doesn't fail the build
