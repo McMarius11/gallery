@@ -23,7 +23,7 @@ private const val TAG = "KokoroTtsEngine"
 class KokoroTtsEngine : TtsEngine {
   @Volatile private var offlineTts: OfflineTts? = null
   private var speakerId: Int = 0
-  private var audioTrack: AudioTrack? = null
+  @Volatile private var audioTrack: AudioTrack? = null
   private var playbackJob: Job? = null
   private var scope: CoroutineScope? = null
   @Volatile private var initialized = false
