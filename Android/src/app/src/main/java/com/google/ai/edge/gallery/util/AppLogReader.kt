@@ -46,4 +46,36 @@ object AppLogReader {
       "Failed to read logcat: ${e.message}"
     }
   }
+
+  /**
+   * Read the system crash buffer. Contains native crash tombstones (SIGABRT, SIGSEGV)
+   * from previous app runs. Unlike the main logcat buffer, this survives process death.
+   * Filters for our package name since the crash buffer is shared across all apps.
+   */
+  fun readCrashBuffer(): String {
+    return try {
+      val process = Runtime.getRuntime().exec(
+        arrayOf("logcat", "-b", "crash", "-d")
+      )
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      // Filter for our package/process
+      val lines = output.lines()
+      val relevant = lines.filter {
+        it.contains("aiedge.gallery", ignoreCase = true) ||
+          it.contains("sherpa", ignoreCase = true) ||
+          it.contains("SIGABRT", ignoreCase = true) ||
+          it.contains("SIGSEGV", ignoreCase = true) ||
+          it.contains("signal", ignoreCase = true) ||
+          it.contains("backtrace", ignoreCase = true) ||
+          it.contains("fault addr", ignoreCase = true) ||
+          it.contains("#0", ignoreCase = false) ||
+          it.contains("pid:", ignoreCase = true)
+      }
+      relevant.joinToString("\n").ifEmpty { "" }
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to read crash buffer", e)
+      ""
+    }
+  }
 }

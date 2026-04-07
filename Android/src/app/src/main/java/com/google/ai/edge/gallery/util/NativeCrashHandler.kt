@@ -16,20 +16,19 @@ private const val CRASH_FILE = "crash_log.txt"
 private const val DOWNLOADS_FILENAME = "echo_crash_log.txt"
 
 /**
- * Unified crash handler using xCrash. Catches both:
- * - Java/Kotlin exceptions
- * - Native crashes: SIGABRT, SIGSEGV, SIGBUS, etc.
+ * Unified crash handler using xCrash + logcat crash buffer.
  *
- * Tombstone files are written to filesDir/tombstones by xCrash's native
- * signal handler. On next app start, [checkPendingCrash] scans the
- * tombstones directory directly (does NOT rely on the Java callback,
- * which may not run for fast native kills).
+ * - xCrash: catches Java exceptions reliably
+ * - logcat -b crash: captures native crash tombstones (SIGABRT, SIGSEGV)
+ *   even when xCrash's native dumper fails (e.g. on newer Android versions)
+ *
+ * On app restart, [checkPendingCrash] checks both xCrash tombstones and
+ * the system crash buffer for recent crashes.
  *
  * No data leaves the device.
  */
 object NativeCrashHandler {
 
-  // Best-effort callback for Java crashes (native crashes may kill before this runs)
   private val crashCallback = ICrashCallback { logPath, _ ->
     try {
       if (logPath != null) {
@@ -47,14 +46,12 @@ object NativeCrashHandler {
 
     val params = XCrash.InitParameters()
       .setLogDir(tombstoneDir.absolutePath)
-      // Java crash handler
       .enableJavaCrashHandler()
       .setJavaRethrow(true)
       .setJavaLogCountMax(5)
       .setJavaLogcatMainLines(200)
       .setJavaDumpAllThreads(true)
       .setJavaCallback(crashCallback)
-      // Native crash handler (SIGABRT, SIGSEGV, etc.)
       .enableNativeCrashHandler()
       .setNativeRethrow(true)
       .setNativeLogCountMax(5)
@@ -63,54 +60,28 @@ object NativeCrashHandler {
       .setNativeDumpMap(true)
       .setNativeDumpFds(true)
       .setNativeCallback(crashCallback)
-      // ANR detection
       .disableAnrCrashHandler()
 
-    val result = XCrash.init(context, params)
-    if (result == 0) {
-      Log.w(TAG, "xCrash initialized (Java + native crash handler)")
-    } else {
-      Log.e(TAG, "xCrash init failed with code: $result")
-    }
+    XCrash.init(context, params)
+    Log.w(TAG, "xCrash initialized")
   }
 
   /**
-   * Scans the tombstones directory for crash files from a previous run.
-   * Does NOT rely on the Java callback (which may not run for native kills).
-   * If a tombstone is found, copies it to Downloads and shows CrashActivity.
+   * Checks for crash data from a previous run. Sources (in priority order):
+   * 1. xCrash tombstone files (Java + native if dumper works)
+   * 2. System crash buffer via logcat -b crash (native crashes, always works)
+   * 3. crash_log.txt from xCrash callback (best-effort)
    */
   fun checkPendingCrash(context: Context) {
-    val tombstoneDir = File(context.filesDir, "tombstones")
-    if (!tombstoneDir.exists()) return
+    val crashText = findCrashLog(context) ?: return
 
-    // Find the most recent tombstone file
-    val latestTombstone = tombstoneDir.listFiles()
-      ?.filter { it.isFile && it.length() > 0 }
-      ?.maxByOrNull { it.lastModified() }
-      ?: return
+    // Save for DebugLogsDialog "Last Crash"
+    try { File(context.filesDir, CRASH_FILE).writeText(crashText) } catch (_: Exception) {}
 
-    // Read and clean up
-    val crashText = try {
-      latestTombstone.readText()
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to read tombstone", e)
-      return
-    }
-
-    if (crashText.isBlank()) return
-
-    // Copy to Downloads so user can access it via file manager
+    // Copy to Downloads
     copyToDownloads(crashText)
 
-    // Save to crash_log.txt for DebugLogsDialog "Last Crash" button
-    try {
-      File(context.filesDir, CRASH_FILE).writeText(crashText)
-    } catch (_: Exception) {}
-
-    // Delete tombstones so we don't show them again
-    tombstoneDir.listFiles()?.forEach { it.delete() }
-
-    // Show CrashActivity after a short delay to let MainActivity init
+    // Show CrashActivity after a delay
     Handler(Looper.getMainLooper()).postDelayed({
       try {
         val intent = Intent(context, CrashActivity::class.java).apply {
@@ -124,16 +95,45 @@ object NativeCrashHandler {
     }, 1500)
   }
 
+  private fun findCrashLog(context: Context): String? {
+    // 1. Check xCrash tombstone files
+    val tombstoneDir = File(context.filesDir, "tombstones")
+    if (tombstoneDir.exists()) {
+      val latest = tombstoneDir.listFiles()
+        ?.filter { it.isFile && it.length() > 0 }
+        ?.maxByOrNull { it.lastModified() }
+
+      if (latest != null) {
+        val text = try { latest.readText() } catch (_: Exception) { null }
+        // Clean up all tombstones
+        tombstoneDir.listFiles()?.forEach { it.delete() }
+        if (!text.isNullOrBlank()) return text
+      }
+    }
+
+    // 2. Check crash_log.txt from callback
+    val crashFile = File(context.filesDir, CRASH_FILE)
+    if (crashFile.exists()) {
+      val text = try { crashFile.readText() } catch (_: Exception) { null }
+      if (!text.isNullOrBlank()) return text
+    }
+
+    // 3. Check system crash buffer (logcat -b crash)
+    val crashBuffer = AppLogReader.readCrashBuffer()
+    if (crashBuffer.isNotBlank()) return "=== NATIVE CRASH (from system log) ===\n\n$crashBuffer"
+
+    return null
+  }
+
   private fun copyToDownloads(crashText: String) {
     try {
       val downloadsDir = Environment.getExternalStoragePublicDirectory(
         Environment.DIRECTORY_DOWNLOADS
       )
-      val crashFile = File(downloadsDir, DOWNLOADS_FILENAME)
-      crashFile.writeText(crashText)
+      File(downloadsDir, DOWNLOADS_FILENAME).writeText(crashText)
       Log.w(TAG, "Crash log saved to Downloads/$DOWNLOADS_FILENAME")
     } catch (e: Exception) {
-      Log.e(TAG, "Failed to copy crash log to Downloads", e)
+      Log.e(TAG, "Failed to copy to Downloads (expected on Android 10+)", e)
     }
   }
 }
