@@ -34,14 +34,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.google.ai.edge.gallery.util.AppLogReader
-import com.google.ai.edge.gallery.util.CrashLogWriter
+import com.google.ai.edge.gallery.util.CrashLogReader
 
 @Composable
 fun DebugLogsDialog(
   onDismissed: () -> Unit,
 ) {
   val context = LocalContext.current
-  val hasCrashLog = remember { CrashLogWriter.readCrashLog(context) != null }
+  val hasCrashLog = remember { CrashLogReader.readCrashLog(context) != null }
   var logText by remember { mutableStateOf("Loading…") }
   var showAll by remember { mutableStateOf(false) }
   var showCrash by remember { mutableStateOf(hasCrashLog) }
@@ -49,7 +49,7 @@ fun DebugLogsDialog(
   // Load logs on open and when filter changes.
   LaunchedEffect(showAll, showCrash) {
     logText = when {
-      showCrash -> CrashLogWriter.readCrashLog(context) ?: "(no crash log)"
+      showCrash -> CrashLogReader.readCrashLog(context) ?: "(no crash log)"
       showAll -> AppLogReader.readAllLogs()
       else -> AppLogReader.readRecentLogs()
     }
@@ -104,7 +104,7 @@ fun DebugLogsDialog(
 
           if (showCrash) {
             OutlinedButton(onClick = {
-              CrashLogWriter.clearCrashLog(context)
+              CrashLogReader.clearCrashLog(context)
               showCrash = false
               Toast.makeText(context, "Crash log cleared", Toast.LENGTH_SHORT).show()
             }) {

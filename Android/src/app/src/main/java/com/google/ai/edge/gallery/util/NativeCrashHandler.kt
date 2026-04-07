@@ -2,6 +2,8 @@ package com.google.ai.edge.gallery.util
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.ai.edge.gallery.ui.crash.CrashActivity
 import xcrash.ICrashCallback
@@ -13,7 +15,7 @@ private const val CRASH_FILE = "crash_log.txt"
 
 /**
  * Unified crash handler using xCrash. Catches both:
- * - Java/Kotlin exceptions (like ACRA but simpler)
+ * - Java/Kotlin exceptions
  * - Native crashes: SIGABRT, SIGSEGV, SIGBUS, etc.
  *
  * Tombstone files are written to filesDir/tombstones.
@@ -24,8 +26,9 @@ private const val CRASH_FILE = "crash_log.txt"
  */
 object NativeCrashHandler {
 
+  // xCrash callback - runs on a crash-handling thread after tombstone is written.
+  // File I/O is acceptable here since the process is about to die anyway.
   private val crashCallback = ICrashCallback { logPath, emergency ->
-    // Called after the tombstone is written, before the process dies.
     try {
       val tombstone = if (logPath != null) File(logPath).readText() else ""
       val crashText = buildString {
@@ -39,7 +42,6 @@ object NativeCrashHandler {
           appendLine(emergency)
         }
       }
-      // Write to a known location so we can find it on restart
       File(appFilesDir, CRASH_FILE).writeText(crashText)
     } catch (e: Exception) {
       Log.e(TAG, "Failed to copy tombstone", e)
@@ -82,21 +84,27 @@ object NativeCrashHandler {
   }
 
   /**
-   * Called on app restart in onCreate(). If a crash_log.txt exists from a
-   * previous crash, launch CrashActivity to display it.
+   * Called on app restart. If a crash_log.txt exists from a previous crash,
+   * posts a delayed launch of CrashActivity to avoid racing with app init.
    */
   fun checkPendingCrash(context: Context) {
     val crashFile = File(context.filesDir, CRASH_FILE)
     if (!crashFile.exists()) return
 
-    try {
-      val intent = Intent(context, CrashActivity::class.java).apply {
-        putExtra(CrashActivity.EXTRA_CRASH_LOG, crashFile.readText())
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Defer to after the main Activity finishes initializing
+    Handler(Looper.getMainLooper()).postDelayed({
+      try {
+        val crashText = crashFile.readText()
+        if (crashText.isBlank()) return@postDelayed
+
+        val intent = Intent(context, CrashActivity::class.java).apply {
+          putExtra(CrashActivity.EXTRA_CRASH_LOG, crashText)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        context.startActivity(intent)
+      } catch (e: Exception) {
+        Log.e(TAG, "Failed to launch CrashActivity", e)
       }
-      context.startActivity(intent)
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to launch CrashActivity", e)
-    }
+    }, 1500)
   }
 }

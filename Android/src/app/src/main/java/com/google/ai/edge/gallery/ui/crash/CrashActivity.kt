@@ -30,10 +30,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.ai.edge.gallery.util.CrashLogWriter
+import com.google.ai.edge.gallery.util.CrashLogReader
 
 /**
- * Activity shown immediately after a crash. Runs in a separate process (:crash)
+ * Activity shown after a crash. Runs in a separate process (:crash)
  * so it survives the death of the main app process.
  *
  * Shows the crash stacktrace and lets the user copy it to clipboard.
@@ -42,8 +42,11 @@ class CrashActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
+    // Clear the crash log immediately so we don't show it again
+    // if CrashActivity itself crashes (prevents infinite loop).
+    CrashLogReader.clearCrashLog(this)
+
     val crashLog = intent.getStringExtra(EXTRA_CRASH_LOG)
-      ?: CrashLogWriter.readCrashLog(this)
       ?: "No crash log available."
 
     setContent {
@@ -56,7 +59,6 @@ class CrashActivity : ComponentActivity() {
             Toast.makeText(this, "Crash log copied to clipboard", Toast.LENGTH_SHORT).show()
           },
           onRestart = {
-            CrashLogWriter.clearCrashLog(this)
             val intent = packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
               intent.addFlags(

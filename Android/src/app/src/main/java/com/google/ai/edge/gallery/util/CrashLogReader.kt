@@ -7,9 +7,9 @@ private const val CRASH_FILE = "crash_log.txt"
 
 /**
  * Utilities for reading and clearing persisted crash logs.
- * Crash reports are written by ACRA via [LocalCrashReportSender].
+ * Crash reports are written by xCrash via [NativeCrashHandler].
  */
-object CrashLogWriter {
+object CrashLogReader {
 
   fun readCrashLog(context: Context): String? {
     val file = File(context.filesDir, CRASH_FILE)
