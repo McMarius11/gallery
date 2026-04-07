@@ -19,6 +19,7 @@ package com.google.ai.edge.gallery
 import android.app.Application
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
+import com.google.ai.edge.gallery.util.CrashLogWriter
 import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -30,6 +31,8 @@ class GalleryApplication : Application() {
 
   override fun onCreate() {
     super.onCreate()
+
+    CrashLogWriter.install(this)
 
     // Load saved theme.
     ThemeSettings.themeOverride.value = dataStoreRepository.readTheme()

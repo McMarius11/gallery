@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.tts.KokoroModelManager
 import com.google.ai.edge.gallery.tts.KokoroModelStatus
@@ -72,15 +73,25 @@ fun TelephonyCallScreen(
 
   // Ensure Kokoro TTS model is downloaded and engine is swapped in
   LaunchedEffect(Unit) {
-    KokoroModelManager.ensureModelReady(context)
-    if (KokoroModelManager.status.value == KokoroModelStatus.READY &&
-      TtsManager.getAvailableVoices().isEmpty()
-    ) {
-      val kokoroEngine = KokoroTtsEngine()
-      kokoroEngine.init(context)
-      if (kokoroEngine.isReady()) {
-        TtsManager.setEngine(kokoroEngine)
+    try {
+      Log.w("TelephonyCall", "Starting Kokoro model init...")
+      KokoroModelManager.ensureModelReady(context)
+      Log.w("TelephonyCall", "Model status: ${KokoroModelManager.status.value}")
+      if (KokoroModelManager.status.value == KokoroModelStatus.READY &&
+        TtsManager.getAvailableVoices().isEmpty()
+      ) {
+        Log.w("TelephonyCall", "Creating KokoroTtsEngine...")
+        val kokoroEngine = KokoroTtsEngine()
+        kokoroEngine.init(context)
+        Log.w("TelephonyCall", "Engine ready: ${kokoroEngine.isReady()}")
+        if (kokoroEngine.isReady()) {
+          TtsManager.setEngine(kokoroEngine)
+          Log.w("TelephonyCall", "TTS engine set successfully")
+        }
       }
+    } catch (e: Exception) {
+      Log.e("TelephonyCall", "TTS init failed", e)
+      telephonyViewModel.setError("TTS init failed: ${e.message}")
     }
   }
 
@@ -96,8 +107,15 @@ fun TelephonyCallScreen(
 
   // Start the call when this screen appears
   LaunchedEffect(Unit) {
-    telephonyViewModel.startCall()
-    conversationLoop.start()
+    try {
+      Log.w("TelephonyCall", "Starting call and conversation loop...")
+      telephonyViewModel.startCall()
+      conversationLoop.start()
+      Log.w("TelephonyCall", "Conversation loop started")
+    } catch (e: Exception) {
+      Log.e("TelephonyCall", "Call start failed", e)
+      telephonyViewModel.setError("Call failed: ${e.message}")
+    }
   }
 
   // Clean up when leaving

@@ -34,18 +34,25 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.google.ai.edge.gallery.util.AppLogReader
+import com.google.ai.edge.gallery.util.CrashLogWriter
 
 @Composable
 fun DebugLogsDialog(
   onDismissed: () -> Unit,
 ) {
   val context = LocalContext.current
+  val hasCrashLog = remember { CrashLogWriter.readCrashLog(context) != null }
   var logText by remember { mutableStateOf("Loading…") }
   var showAll by remember { mutableStateOf(false) }
+  var showCrash by remember { mutableStateOf(hasCrashLog) }
 
   // Load logs on open and when filter changes.
-  LaunchedEffect(showAll) {
-    logText = if (showAll) AppLogReader.readAllLogs() else AppLogReader.readRecentLogs()
+  LaunchedEffect(showAll, showCrash) {
+    logText = when {
+      showCrash -> CrashLogWriter.readCrashLog(context) ?: "(no crash log)"
+      showAll -> AppLogReader.readAllLogs()
+      else -> AppLogReader.readRecentLogs()
+    }
   }
 
   Dialog(
@@ -82,8 +89,27 @@ fun DebugLogsDialog(
             Text("Refresh")
           }
 
-          OutlinedButton(onClick = { showAll = !showAll }) {
+          OutlinedButton(onClick = {
+            showCrash = false
+            showAll = !showAll
+          }) {
             Text(if (showAll) "Errors only" else "Show all")
+          }
+
+          if (hasCrashLog) {
+            OutlinedButton(onClick = { showCrash = !showCrash }) {
+              Text(if (showCrash) "Live logs" else "Last Crash")
+            }
+          }
+
+          if (showCrash) {
+            OutlinedButton(onClick = {
+              CrashLogWriter.clearCrashLog(context)
+              showCrash = false
+              Toast.makeText(context, "Crash log cleared", Toast.LENGTH_SHORT).show()
+            }) {
+              Text("Clear Crash")
+            }
           }
         }
 
