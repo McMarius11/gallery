@@ -17,11 +17,15 @@
 package com.google.ai.edge.gallery
 
 import android.app.Application
+import android.content.Context
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
-import com.google.ai.edge.gallery.util.CrashLogWriter
+import com.google.ai.edge.gallery.util.LocalCrashReportSenderFactory
 import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
+import org.acra.config.CoreConfigurationBuilder
+import org.acra.ACRA
+import org.acra.ReportField
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -29,10 +33,30 @@ class GalleryApplication : Application() {
 
   @Inject lateinit var dataStoreRepository: DataStoreRepository
 
+  override fun attachBaseContext(base: Context) {
+    super.attachBaseContext(base)
+
+    ACRA.init(this, CoreConfigurationBuilder()
+      .withReportSenderFactoryClasses(LocalCrashReportSenderFactory::class.java)
+      .withReportContent(
+        ReportField.STACK_TRACE,
+        ReportField.APP_VERSION_NAME,
+        ReportField.APP_VERSION_CODE,
+        ReportField.TOTAL_MEM_SIZE,
+        ReportField.AVAILABLE_MEM_SIZE,
+        ReportField.THREAD_DETAILS,
+        ReportField.LOGCAT,
+        ReportField.ANDROID_VERSION,
+        ReportField.PHONE_MODEL,
+        ReportField.BRAND,
+      )
+      .withParallel(false)
+      .withStopServicesOnCrash(false)
+    )
+  }
+
   override fun onCreate() {
     super.onCreate()
-
-    CrashLogWriter.install(this)
 
     // Load saved theme.
     ThemeSettings.themeOverride.value = dataStoreRepository.readTheme()
