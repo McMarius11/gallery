@@ -23,9 +23,10 @@ import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.util.LocalCrashReportSenderFactory
 import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
-import org.acra.config.CoreConfigurationBuilder
 import org.acra.ACRA
 import org.acra.ReportField
+import org.acra.config.initAcra
+import org.acra.plugins.SimplePluginLoader
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -36,9 +37,9 @@ class GalleryApplication : Application() {
   override fun attachBaseContext(base: Context) {
     super.attachBaseContext(base)
 
-    ACRA.init(this, CoreConfigurationBuilder()
-      .withReportSenderFactoryClasses(LocalCrashReportSenderFactory::class.java)
-      .withReportContent(
+    initAcra {
+      pluginLoader = SimplePluginLoader(LocalCrashReportSenderFactory::class.java)
+      reportContent = listOf(
         ReportField.STACK_TRACE,
         ReportField.APP_VERSION_NAME,
         ReportField.APP_VERSION_CODE,
@@ -50,9 +51,9 @@ class GalleryApplication : Application() {
         ReportField.PHONE_MODEL,
         ReportField.BRAND,
       )
-      .withParallel(false)
-      .withStopServicesOnCrash(false)
-    )
+      parallel = false
+      stopServicesOnCrash = false
+    }
   }
 
   override fun onCreate() {
