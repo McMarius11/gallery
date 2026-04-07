@@ -33,6 +33,10 @@ class KokoroTtsEngine : TtsEngine {
   override var onSpeakingDone: (() -> Unit)? = null
 
   override fun init(context: Context) {
+    if (initialized) {
+      Log.w(TAG, "Already initialized, skipping")
+      return
+    }
     val modelDir = KokoroModelManager.getModelDir(context)
     if (!File(modelDir, "model.onnx").exists()) {
       Log.w(TAG, "Kokoro model not found at ${modelDir.absolutePath}")
@@ -67,11 +71,12 @@ class KokoroTtsEngine : TtsEngine {
 
   override fun speak(text: String, onDone: (() -> Unit)?) {
     if (!initialized || text.isBlank()) {
-      // Engine not ready or empty text — invoke callback immediately so voice flow continues.
+      Log.w(TAG, "speak() skipped: initialized=$initialized, blank=${text.isBlank()}")
       onDone?.invoke()
       return
     }
 
+    Log.w(TAG, "speak() called, text length=${text.length}")
     stop()
     stopped = false
     onSpeakingDone = onDone
@@ -80,24 +85,25 @@ class KokoroTtsEngine : TtsEngine {
       try {
         val cleanText = cleanMarkdown(text)
         val sentences = splitIntoSentences(cleanText)
+        Log.w(TAG, "Speaking ${sentences.size} sentences")
 
         val track = createAudioTrack()
         audioTrack = track
         track.play()
 
-        for (sentence in sentences) {
-          if (!isActive || stopped) break
+        for ((i, sentence) in sentences.withIndex()) {
+          if (!isActive || stopped) {
+            Log.w(TAG, "Stopped before sentence $i")
+            break
+          }
           if (sentence.isBlank()) continue
 
+          Log.w(TAG, "Generating sentence $i: \"${sentence.take(50)}...\"")
           offlineTts?.generateWithCallback(
             text = sentence,
             sid = speakerId,
             speed = 1.0f,
             callback = { samples ->
-              // Check stopped flag BEFORE writing to AudioTrack.
-              // stop() may have released the track on another thread —
-              // writing to a released track throws, and the exception
-              // propagates into native code causing SIGABRT.
               if (!isActive || stopped) return@generateWithCallback 0
               try {
                 track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
@@ -108,6 +114,7 @@ class KokoroTtsEngine : TtsEngine {
               return@generateWithCallback 1
             },
           )
+          Log.w(TAG, "Sentence $i done")
         }
 
         if (isActive) {
@@ -115,6 +122,7 @@ class KokoroTtsEngine : TtsEngine {
         }
         track.release()
         audioTrack = null
+        Log.w(TAG, "All sentences spoken, invoking onDone")
 
         if (isActive) {
           onSpeakingDone?.invoke()

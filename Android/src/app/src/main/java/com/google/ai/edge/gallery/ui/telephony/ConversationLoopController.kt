@@ -104,9 +104,11 @@ class ConversationLoopController(
     // Get the last agent message
     val msgs = llmViewModel.uiState.value.messagesByModel[model.name]
     val lastAgentMessage = msgs?.lastOrNull { it is ChatMessageText && it.side == ChatSide.AGENT }
+    Log.w(TAG, "onLlmResponseDone: lastAgentMessage=${if (lastAgentMessage is ChatMessageText) "\"${lastAgentMessage.content.take(50)}...\"" else "null"}")
 
     if (lastAgentMessage is ChatMessageText) {
       telephonyViewModel.setPhase(CallPhase.SPEAKING)
+      Log.w(TAG, "Starting TTS speak, content length=${lastAgentMessage.content.length}")
 
       // Start TTS with callback to restart listening
       TtsManager.speak(lastAgentMessage.content) {
