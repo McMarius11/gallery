@@ -53,11 +53,27 @@ object AsrModelManager {
     val encoder = File(modelDir, "small-encoder.int8.onnx")
     val decoder = File(modelDir, "small-decoder.int8.onnx")
     val tokens = File(modelDir, "small-tokens.txt")
-    val ready = encoder.exists() && decoder.exists() && tokens.exists()
+
+    // Check existence AND minimum file sizes to detect corrupt/truncated downloads.
+    // Encoder ~30MB, decoder ~17MB, tokens ~10KB
+    val ready = encoder.exists() && encoder.length() > 1_000_000 &&
+      decoder.exists() && decoder.length() > 1_000_000 &&
+      tokens.exists() && tokens.length() > 1_000
+
     if (ready) {
       _status.value = AsrModelStatus.READY
+    } else if (encoder.exists() || decoder.exists() || tokens.exists()) {
+      // Files exist but are too small - likely corrupt. Delete and re-download.
+      Log.w(TAG, "Model files appear corrupt (encoder=${encoder.length()}, decoder=${decoder.length()}, tokens=${tokens.length()}). Deleting for re-download.")
+      deleteModelFiles(context)
     }
     return ready
+  }
+
+  fun deleteModelFiles(context: Context) {
+    val modelDir = getModelDir(context)
+    modelDir.listFiles()?.forEach { it.delete() }
+    _status.value = AsrModelStatus.NOT_DOWNLOADED
   }
 
   suspend fun ensureModelReady(context: Context) {

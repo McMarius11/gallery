@@ -35,32 +35,52 @@ class SherpaAsrEngine(private val context: Context) {
   private var recordingJob: Job? = null
   private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
   private var isListening = false
+  private var initFailed = false
 
   fun isAvailable(): Boolean {
-    return AsrModelManager.checkModelReady(context) &&
+    return !initFailed &&
+      AsrModelManager.checkModelReady(context) &&
       ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
   }
 
   fun init(): Boolean {
     if (recognizer != null) return true
+    if (initFailed) {
+      Log.e(TAG, "Init previously failed, not retrying to avoid native crash")
+      return false
+    }
     if (!AsrModelManager.checkModelReady(context)) {
-      Log.e(TAG, "ASR model not downloaded yet")
+      Log.e(TAG, "ASR model not downloaded or corrupt")
       return false
     }
 
     val modelDir = AsrModelManager.getModelDir(context).absolutePath
+
+    // Verify all model files exist and are readable before calling JNI.
+    // A native SIGABRT from newFromFile() cannot be caught by try/catch and kills the process.
+    val encoderFile = File("$modelDir/small-encoder.int8.onnx")
+    val decoderFile = File("$modelDir/small-decoder.int8.onnx")
+    val tokensFile = File("$modelDir/small-tokens.txt")
+
+    if (!encoderFile.canRead() || !decoderFile.canRead() || !tokensFile.canRead()) {
+      Log.e(TAG, "Model files not readable: encoder=${encoderFile.canRead()}, decoder=${decoderFile.canRead()}, tokens=${tokensFile.canRead()}")
+      initFailed = true
+      return false
+    }
+
+    Log.w(TAG, "Model files validated: encoder=${encoderFile.length()}B, decoder=${decoderFile.length()}B, tokens=${tokensFile.length()}B")
 
     return try {
       val config = OfflineRecognizerConfig(
         featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
         modelConfig = OfflineModelConfig(
           whisper = OfflineWhisperModelConfig(
-            encoder = "$modelDir/small-encoder.int8.onnx",
-            decoder = "$modelDir/small-decoder.int8.onnx",
+            encoder = encoderFile.absolutePath,
+            decoder = decoderFile.absolutePath,
             task = "transcribe",
           ),
-          tokens = "$modelDir/small-tokens.txt",
+          tokens = tokensFile.absolutePath,
           numThreads = 4,
           provider = "cpu",
         ),
@@ -72,6 +92,9 @@ class SherpaAsrEngine(private val context: Context) {
       true
     } catch (e: Exception) {
       Log.e(TAG, "Failed to initialize Whisper ASR: ${e.message}", e)
+      initFailed = true
+      // Model files may be corrupt - delete them so they'll be re-downloaded
+      AsrModelManager.deleteModelFiles(context)
       false
     }
   }
@@ -238,18 +261,25 @@ class SherpaAsrEngine(private val context: Context) {
       return
     }
 
-    val samples = audioBuffer.copyOf(totalSamples)
-    val stream = rec.createStream()
-    stream.acceptWaveform(samples, SAMPLE_RATE)
-    rec.decode(stream)
-    val result = rec.getResult(stream)
-    stream.free()
+    try {
+      val samples = audioBuffer.copyOf(totalSamples)
+      val stream = rec.createStream()
+      stream.acceptWaveform(samples, SAMPLE_RATE)
+      rec.decode(stream)
+      val result = rec.getResult(stream)
+      stream.free()
 
-    val text = result.text.trim()
-    Log.w(TAG, "Recognized: \"$text\" (lang=${result.lang})")
+      val text = result.text.trim()
+      Log.w(TAG, "Recognized: \"$text\" (lang=${result.lang})")
 
-    withContext(Dispatchers.Main) {
-      onResult(text)
+      withContext(Dispatchers.Main) {
+        onResult(text)
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "Whisper recognition failed: ${e.message}", e)
+      // Reset recognizer on failure - it may be in a bad state
+      recognizer = null
+      withContext(Dispatchers.Main) { onError(5) }
     }
   }
 }
