@@ -81,17 +81,31 @@ class KokoroTtsEngine : TtsEngine {
             dataDir = File(modelDir, "espeak-ng-data").absolutePath,
             lengthScale = 1.0f,
           ),
-          numThreads = 2,
-          debug = false,
+          numThreads = 4,
+          debug = true,
+          provider = "cpu",
         ),
       )
 
+      crashLog("init(#$instanceId): calling OfflineTts(config), model=${File(modelDir, "model.onnx").absolutePath}")
       offlineTts = OfflineTts(config = config)
       sampleRate = offlineTts!!.sampleRate()
+      val numSpeakers = offlineTts!!.numSpeakers()
+
+      // Smoke-test: try a simple generate() (no callback) to catch crashes early
+      crashLog("init(#$instanceId): smoke-test generate('Hello'), ptr=${System.identityHashCode(offlineTts)}")
+      try {
+        val testAudio = offlineTts!!.generate(text = "Hello", sid = 0, speed = 1.0f)
+        crashLog("init(#$instanceId): smoke-test OK, ${testAudio.samples.size} samples, rate=${testAudio.sampleRate}")
+      } catch (e: Exception) {
+        crashLog("init(#$instanceId): smoke-test FAILED: ${e.javaClass.simpleName}: ${e.message}")
+        // Don't fail init — the smoke test is just diagnostic
+      }
+
       scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
       initialized = true
-      crashLog("init(#$instanceId): SUCCESS, sampleRate=$sampleRate, ptr exists=${offlineTts != null}")
-      Log.d(TAG, "Kokoro TTS #$instanceId initialized, sampleRate=$sampleRate")
+      crashLog("init(#$instanceId): SUCCESS, sampleRate=$sampleRate, speakers=$numSpeakers")
+      Log.d(TAG, "Kokoro TTS #$instanceId initialized, sampleRate=$sampleRate, speakers=$numSpeakers")
     } catch (e: Exception) {
       crashLog("init(#$instanceId): FAILED ${e.javaClass.simpleName}: ${e.message}")
       Log.e(TAG, "Failed to initialize Kokoro TTS #$instanceId", e)
