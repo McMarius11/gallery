@@ -166,7 +166,12 @@ class MainActivity : ComponentActivity() {
 
   override fun onDestroy() {
     super.onDestroy()
-    com.google.ai.edge.gallery.ui.common.chat.TtsManager.shutdown()
+    // Only stop playback — do NOT call shutdown() here.
+    // The native OfflineTts must never be freed and recreated within the
+    // same process because free() corrupts global native state (ONNX Runtime /
+    // espeak-ng), making any subsequent OfflineTts instance crash with SIGABRT.
+    // The TtsManager singleton and its native engine live as long as the process.
+    com.google.ai.edge.gallery.ui.common.chat.TtsManager.stop()
   }
 
   override fun onResume() {

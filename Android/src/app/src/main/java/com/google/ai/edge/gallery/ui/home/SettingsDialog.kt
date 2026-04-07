@@ -459,9 +459,11 @@ private fun KokoroTtsSection() {
         }
         KokoroModelStatus.READY -> {
           OutlinedButton(onClick = {
-            TtsManager.shutdown()
+            // Stop playback only — do NOT free() the native engine.
+            // Freeing corrupts global native state, causing SIGABRT on re-init.
+            TtsManager.softReset()
             KokoroModelManager.deleteModelFiles(context)
-            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context, "SettingsDialog") }
+            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context, "SettingsDialog.ReDownload") }
           }) {
             Text("Re-download")
           }

@@ -113,8 +113,16 @@ object TtsManager {
       kokoroEngine.init(appCtx)
 
       if (kokoroEngine.isReady()) {
-        crashLog(appCtx, "ensureKokoroEngine($caller): engine #$count ready, shutting down old engine (${engine.javaClass.simpleName})")
-        engine.shutdown()
+        // Do NOT call shutdown() on old engine if it's a KokoroTtsEngine —
+        // free() corrupts global native state (ONNX Runtime / espeak-ng).
+        // Just stop playback and replace the reference; the old native ptr
+        // will be garbage-collected or reused.
+        if (engine is KokoroTtsEngine) {
+          crashLog(appCtx, "ensureKokoroEngine($caller): WARNING old engine is KokoroTtsEngine, stopping playback only (no free)")
+          engine.stop()
+        } else {
+          engine.shutdown()
+        }
         engine = kokoroEngine
         kokoroInitialized = true
         val savedVoice = getSavedVoiceId(appCtx)
@@ -142,6 +150,17 @@ object TtsManager {
 
   fun stop() {
     engine.stop()
+  }
+
+  /**
+   * Stop playback and mark engine as needing re-init, but do NOT free()
+   * native resources. Use this for re-download flows where the model files
+   * will change but we can't safely free the native OfflineTts.
+   */
+  fun softReset() {
+    Log.w(TAG, "softReset() called, engine=${engine.javaClass.simpleName}")
+    engine.stop()
+    kokoroInitialized = false
   }
 
   fun shutdown() {
