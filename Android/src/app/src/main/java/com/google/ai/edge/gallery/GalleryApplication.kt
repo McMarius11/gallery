@@ -25,7 +25,7 @@ import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
 import org.acra.ACRA
 import org.acra.ReportField
-import org.acra.config.initAcra
+import org.acra.config.CoreConfigurationBuilder
 import org.acra.plugins.SimplePluginLoader
 import javax.inject.Inject
 
@@ -37,9 +37,9 @@ class GalleryApplication : Application() {
   override fun attachBaseContext(base: Context) {
     super.attachBaseContext(base)
 
-    initAcra {
-      pluginLoader = SimplePluginLoader(LocalCrashReportSenderFactory::class.java)
-      reportContent = listOf(
+    ACRA.init(this, CoreConfigurationBuilder()
+      .setPluginLoader(SimplePluginLoader(LocalCrashReportSenderFactory::class.java))
+      .setReportContent(
         ReportField.STACK_TRACE,
         ReportField.APP_VERSION_NAME,
         ReportField.APP_VERSION_CODE,
@@ -51,9 +51,7 @@ class GalleryApplication : Application() {
         ReportField.PHONE_MODEL,
         ReportField.BRAND,
       )
-      parallel = false
-      stopServicesOnCrash = false
-    }
+    )
   }
 
   override fun onCreate() {
