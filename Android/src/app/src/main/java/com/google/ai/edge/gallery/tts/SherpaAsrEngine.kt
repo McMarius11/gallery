@@ -33,7 +33,7 @@ private const val PREFS_NAME = "sherpa_asr_prefs"
 private const val KEY_INIT_CANARY = "init_in_progress"
 private const val KEY_RECOGNIZE_CANARY = "recognize_in_progress"
 private const val KEY_CRASH_COUNT = "native_crash_count"
-private const val MAX_CRASH_COUNT = 2
+private const val MAX_CRASH_COUNT = 1
 
 class SherpaAsrEngine(private val context: Context) {
   private var recognizer: OfflineRecognizer? = null

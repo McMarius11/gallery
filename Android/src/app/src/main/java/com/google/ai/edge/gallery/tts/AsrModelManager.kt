@@ -56,18 +56,45 @@ object AsrModelManager {
 
     // Check existence AND minimum file sizes to detect corrupt/truncated downloads.
     // Encoder ~30MB, decoder ~17MB, tokens ~10KB
-    val ready = encoder.exists() && encoder.length() > 20_000_000 &&
+    val sizeOk = encoder.exists() && encoder.length() > 20_000_000 &&
       decoder.exists() && decoder.length() > 10_000_000 &&
       tokens.exists() && tokens.length() > 1_000
 
-    if (ready) {
-      _status.value = AsrModelStatus.READY
-    } else if (encoder.exists() || decoder.exists() || tokens.exists()) {
-      // Files exist but are too small - likely corrupt. Delete and re-download.
-      Log.w(TAG, "Model files appear corrupt (encoder=${encoder.length()}, decoder=${decoder.length()}, tokens=${tokens.length()}). Deleting for re-download.")
-      deleteModelFiles(context)
+    if (!sizeOk) {
+      if (encoder.exists() || decoder.exists() || tokens.exists()) {
+        Log.w(TAG, "Model files appear corrupt (encoder=${encoder.length()}, decoder=${decoder.length()}, tokens=${tokens.length()}). Deleting for re-download.")
+        deleteModelFiles(context)
+      }
+      return false
     }
-    return ready
+
+    // Validate ONNX file headers (protobuf magic byte 0x08 or 0x0A)
+    if (!isValidOnnxFile(encoder) || !isValidOnnxFile(decoder)) {
+      Log.w(TAG, "ONNX header validation failed. Deleting for re-download.")
+      deleteModelFiles(context)
+      return false
+    }
+
+    _status.value = AsrModelStatus.READY
+    return true
+  }
+
+  /**
+   * Validate that the file starts with valid ONNX/protobuf bytes.
+   * ONNX files are protobuf-encoded; valid ones start with field tags 0x08 or 0x0A.
+   * HTML error pages (e.g. from CDN) start with '<' (0x3C).
+   */
+  private fun isValidOnnxFile(file: File): Boolean {
+    return try {
+      file.inputStream().use { stream ->
+        val firstByte = stream.read()
+        // Protobuf field tags for the ONNX ModelProto message
+        firstByte == 0x08 || firstByte == 0x0A || firstByte == 0x12 || firstByte == 0x1A
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to read file header: ${file.name}", e)
+      false
+    }
   }
 
   fun deleteModelFiles(context: Context) {
