@@ -245,6 +245,19 @@ class SherpaAsrEngine(private val context: Context) {
     recognizer = null
   }
 
+  /**
+   * Release the native recognizer to free memory (~50MB) while keeping the engine
+   * ready for re-init. Call this during TTS speaking to reduce memory pressure
+   * and avoid OOM kills. The recognizer will be re-created on next startListening().
+   */
+  fun releaseRecognizerMemory() {
+    if (recognizer != null) {
+      Log.w(TAG, "Releasing recognizer to free memory for TTS")
+      recognizer?.free()
+      recognizer = null
+    }
+  }
+
   @android.annotation.SuppressLint("MissingPermission") // Permission checked by caller (HoldToDictateViewModel)
   private suspend fun recordAndRecognize(
     onAmplitudeChanged: (Int) -> Unit,

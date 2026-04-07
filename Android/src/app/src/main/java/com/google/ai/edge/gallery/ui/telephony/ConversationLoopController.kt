@@ -110,6 +110,10 @@ class ConversationLoopController(
       telephonyViewModel.setPhase(CallPhase.SPEAKING)
       Log.w(TAG, "Starting TTS speak, content length=${lastAgentMessage.content.length}")
 
+      // Free ASR native memory (~50MB) to make room for TTS inference.
+      // The recognizer will be re-initialized when listening resumes.
+      holdToDictateViewModel.releaseAsrMemory()
+
       // Start TTS with callback to restart listening
       TtsManager.speak(lastAgentMessage.content) {
         if (isActive) {

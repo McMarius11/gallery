@@ -99,6 +99,14 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     sherpaAsrEngine?.free()
   }
 
+  /**
+   * Release ASR native memory to make room for TTS inference.
+   * The recognizer will be re-initialized on next startListening().
+   */
+  fun releaseAsrMemory() {
+    sherpaAsrEngine?.releaseRecognizerMemory()
+  }
+
   fun startSpeechRecognition(
     onDone: (String) -> Unit,
     onAmplitudeChanged: (Int) -> Unit,
