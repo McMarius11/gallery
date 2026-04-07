@@ -29,6 +29,11 @@ private const val SILENCE_THRESHOLD_RMS = 400f
 private const val SILENCE_DURATION_MS = 1500L
 private const val MIN_SPEECH_DURATION_MS = 300L
 
+private const val PREFS_NAME = "sherpa_asr_prefs"
+private const val KEY_INIT_CANARY = "init_in_progress"
+private const val KEY_CRASH_COUNT = "native_crash_count"
+private const val MAX_CRASH_COUNT = 2
+
 class SherpaAsrEngine(private val context: Context) {
   private var recognizer: OfflineRecognizer? = null
   private var audioRecord: AudioRecord? = null
@@ -37,17 +42,60 @@ class SherpaAsrEngine(private val context: Context) {
   private var isListening = false
   private var initFailed = false
 
+  private val prefs by lazy {
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+  }
+
   fun isAvailable(): Boolean {
     return !initFailed &&
+      !isInitBlockedByPreviousCrash() &&
       AsrModelManager.checkModelReady(context) &&
       ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
   }
 
+  /**
+   * Check if a previous init attempt crashed the process (canary flag still set)
+   * or if we've exceeded the max crash count.
+   */
+  private fun isInitBlockedByPreviousCrash(): Boolean {
+    val canarySet = prefs.getBoolean(KEY_INIT_CANARY, false)
+    val crashCount = prefs.getInt(KEY_CRASH_COUNT, 0)
+
+    if (canarySet) {
+      // Previous init caused a process death (SIGABRT) — the canary was never cleared
+      val newCount = crashCount + 1
+      prefs.edit()
+        .putBoolean(KEY_INIT_CANARY, false)
+        .putInt(KEY_CRASH_COUNT, newCount)
+        .apply()
+      Log.e(TAG, "Detected previous native crash during init (crash #$newCount)")
+
+      if (newCount >= MAX_CRASH_COUNT) {
+        Log.e(TAG, "Too many native crashes ($newCount), disabling ASR. Delete model to retry.")
+        // Delete corrupt model files so re-download can fix it
+        AsrModelManager.deleteModelFiles(context)
+        return true
+      }
+    }
+
+    return crashCount >= MAX_CRASH_COUNT
+  }
+
+  /**
+   * Reset the crash counter, e.g. after model files are re-downloaded.
+   */
+  fun resetCrashState() {
+    prefs.edit()
+      .putBoolean(KEY_INIT_CANARY, false)
+      .putInt(KEY_CRASH_COUNT, 0)
+      .apply()
+  }
+
   fun init(): Boolean {
     if (recognizer != null) return true
-    if (initFailed) {
-      Log.e(TAG, "Init previously failed, not retrying to avoid native crash")
+    if (initFailed || isInitBlockedByPreviousCrash()) {
+      Log.e(TAG, "Init blocked: initFailed=$initFailed, crash count=${prefs.getInt(KEY_CRASH_COUNT, 0)}")
       return false
     }
     if (!AsrModelManager.checkModelReady(context)) {
@@ -71,6 +119,10 @@ class SherpaAsrEngine(private val context: Context) {
 
     Log.w(TAG, "Model files validated: encoder=${encoderFile.length()}B, decoder=${decoderFile.length()}B, tokens=${tokensFile.length()}B")
 
+    // Set canary BEFORE the dangerous JNI call. If the process dies from SIGABRT,
+    // this flag will still be set on next start and we'll know init crashed.
+    prefs.edit().putBoolean(KEY_INIT_CANARY, true).commit()
+
     return try {
       val config = OfflineRecognizerConfig(
         featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
@@ -88,10 +140,18 @@ class SherpaAsrEngine(private val context: Context) {
       )
 
       recognizer = OfflineRecognizer(config = config)
+
+      // Init succeeded — clear the canary and reset crash count
+      prefs.edit()
+        .putBoolean(KEY_INIT_CANARY, false)
+        .putInt(KEY_CRASH_COUNT, 0)
+        .apply()
+
       Log.w(TAG, "Whisper ASR recognizer initialized successfully")
       true
     } catch (e: Exception) {
       Log.e(TAG, "Failed to initialize Whisper ASR: ${e.message}", e)
+      prefs.edit().putBoolean(KEY_INIT_CANARY, false).apply()
       initFailed = true
       // Model files may be corrupt - delete them so they'll be re-downloaded
       AsrModelManager.deleteModelFiles(context)
