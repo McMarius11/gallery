@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import com.google.ai.edge.gallery.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.net.HttpURLConnection
@@ -25,6 +26,23 @@ data class AppUpdateInfo(
 )
 
 object AppUpdateChecker {
+
+    suspend fun checkForUpdateWithRetry(
+        context: Context,
+        maxAttempts: Int = 3,
+        delayMs: Long = 2000L,
+    ): AppUpdateInfo? {
+        repeat(maxAttempts) { attempt ->
+            val result = checkForUpdate(context)
+            if (result != null) return result
+            if (attempt < maxAttempts - 1) {
+                Log.d(TAG, "Update check attempt ${attempt + 1} returned null, retrying in ${delayMs}ms")
+                delay(delayMs)
+            }
+        }
+        Log.d(TAG, "All $maxAttempts update check attempts returned null")
+        return null
+    }
 
     suspend fun checkForUpdate(context: Context): AppUpdateInfo? = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null

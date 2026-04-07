@@ -53,11 +53,11 @@ class KokoroTtsEngine : TtsEngine {
       Log.w(TAG, "Already initialized, skipping")
       return
     }
-    val modelDir = KokoroModelManager.getModelDir(context)
-    if (!File(modelDir, "model.onnx").exists()) {
-      Log.w(TAG, "Kokoro model not found at ${modelDir.absolutePath}")
+    if (!KokoroModelManager.checkModelReady(context)) {
+      Log.e(TAG, "Kokoro model not ready, refusing to initialize native engine")
       return
     }
+    val modelDir = KokoroModelManager.getModelDir(context)
 
     try {
       val config = OfflineTtsConfig(

@@ -36,14 +36,6 @@ object KokoroModelManager {
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
   private const val MODEL_TAR = "sherpa-onnx-tts-kokoro-en-v1.0-int8.tar.bz2"
 
-  private val REQUIRED_FILES = listOf(
-    "model.onnx",
-    "voices.bin",
-    "tokens.txt",
-    "lexicon.txt",
-    "data_dir",
-  )
-
   fun getModelDir(context: Context): File {
     return File(context.filesDir, MODEL_DIR)
   }
@@ -70,6 +62,15 @@ object KokoroModelManager {
     "espeak-ng-data/en_dict",
   )
 
+  /** Minimum file sizes to detect truncated/corrupt downloads. */
+  private val MIN_FILE_SIZES = mapOf(
+    "model.onnx" to 1_000_000L,
+    "voices.bin" to 1_000_000L,
+    "tokens.txt" to 1_000L,
+    "espeak-ng-data/en_dict" to 10_000L,
+    "espeak-ng-data/phondata" to 1_000L,
+  )
+
   fun checkModelReady(context: Context): Boolean {
     val modelDir = getModelDir(context)
     if (!modelDir.exists()) return false
@@ -80,8 +81,29 @@ object KokoroModelManager {
       return false
     }
 
+    // Validate minimum file sizes to catch truncated downloads
+    for ((filePath, minSize) in MIN_FILE_SIZES) {
+      val file = File(modelDir, filePath)
+      if (file.exists() && file.length() < minSize) {
+        Log.e(TAG, "Kokoro file too small (corrupt?): $filePath = ${file.length()} bytes, min=$minSize")
+        return false
+      }
+    }
+
     _status.value = KokoroModelStatus.READY
     return true
+  }
+
+  /** Delete all model files so they can be re-downloaded. */
+  fun deleteModelFiles(context: Context) {
+    val modelDir = getModelDir(context)
+    if (modelDir.exists()) {
+      modelDir.deleteRecursively()
+      Log.w(TAG, "Deleted Kokoro model directory: ${modelDir.absolutePath}")
+    }
+    _status.value = KokoroModelStatus.NOT_DOWNLOADED
+    _downloadProgress.value = 0f
+    _lastError.value = null
   }
 
   suspend fun ensureModelReady(context: Context) {
@@ -94,7 +116,9 @@ object KokoroModelManager {
 
     try {
       downloadAndExtractModel(context)
-      _status.value = KokoroModelStatus.READY
+      if (!checkModelReady(context)) {
+        throw Exception("Model files incomplete or corrupt after download")
+      }
       Log.w(TAG, "Kokoro model download complete, status=READY")
     } catch (e: Exception) {
       val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
@@ -166,7 +190,14 @@ object KokoroModelManager {
           }
         }
 
-        tmpFile.renameTo(targetFile)
+        if (contentLength > 0 && bytesRead != contentLength) {
+          tmpFile.delete()
+          throw Exception("Incomplete download for $localName: expected $contentLength bytes, got $bytesRead")
+        }
+        if (!tmpFile.renameTo(targetFile)) {
+          tmpFile.delete()
+          throw Exception("Failed to rename $localName.tmp to $localName")
+        }
         completedFiles++
         _downloadProgress.value = completedFiles.toFloat() / totalFiles
         Log.w(TAG, "Downloaded: $localName (${targetFile.length()} bytes)")
@@ -206,12 +237,13 @@ object KokoroModelManager {
 
     for (filePath in espeakFiles) {
       val targetFile = File(modelDir, filePath)
-      if (targetFile.exists()) continue
+      if (targetFile.exists() && targetFile.length() > 0) continue
 
       targetFile.parentFile?.mkdirs()
       val url = URL("$baseUrl$filePath")
       Log.w(TAG, "Downloading espeak data: $url")
 
+      val tmpFile = File(modelDir, "$filePath.tmp")
       try {
         val connection = url.openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = true
@@ -221,18 +253,29 @@ object KokoroModelManager {
 
         Log.w(TAG, "espeak HTTP ${connection.responseCode} ${connection.responseMessage} for $filePath")
 
-        if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-          connection.inputStream.use { input ->
-            FileOutputStream(targetFile).use { output ->
-              input.copyTo(output)
-            }
-          }
-          Log.w(TAG, "espeak downloaded: $filePath (${targetFile.length()} bytes)")
-        } else {
-          Log.e(TAG, "espeak download failed: HTTP ${connection.responseCode} for $filePath")
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+          throw Exception("HTTP ${connection.responseCode} downloading espeak file: $filePath")
         }
+
+        connection.inputStream.use { input ->
+          FileOutputStream(tmpFile).use { output ->
+            input.copyTo(output)
+          }
+        }
+
+        if (tmpFile.length() == 0L) {
+          tmpFile.delete()
+          throw Exception("Empty download for espeak file: $filePath")
+        }
+
+        if (!tmpFile.renameTo(targetFile)) {
+          tmpFile.delete()
+          throw Exception("Failed to rename $filePath.tmp to $filePath")
+        }
+        Log.w(TAG, "espeak downloaded: $filePath (${targetFile.length()} bytes)")
       } catch (e: Exception) {
-        Log.e(TAG, "Failed to download espeak file: $filePath - ${e.javaClass.simpleName}: ${e.message}", e)
+        tmpFile.delete()
+        throw Exception("Failed to download espeak file: $filePath", e)
       }
     }
   }

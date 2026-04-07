@@ -174,9 +174,14 @@ fun HomeScreen(
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
 
-  // Check for app updates on first composition
+  // Check for app updates on first composition, with retry
   LaunchedEffect(Unit) {
-    updateInfo = AppUpdateChecker.checkForUpdate(context)
+    updateInfo = AppUpdateChecker.checkForUpdateWithRetry(context)
+    // If all retries failed, try once more after 30 seconds (e.g. network not ready yet)
+    if (updateInfo == null) {
+      kotlinx.coroutines.delay(30_000)
+      updateInfo = AppUpdateChecker.checkForUpdateWithRetry(context)
+    }
   }
 
   var tasks = uiState.tasks

@@ -77,7 +77,7 @@ private const val TEXT_INPUT_HISTORY_MAX_SIZE = 50
 private const val MODEL_ALLOWLIST_FILENAME = "model_allowlist.json"
 private const val MODEL_ALLOWLIST_TEST_FILENAME = "model_allowlist_test.json"
 private const val ALLOWLIST_BASE_URL =
-  "https://raw.githubusercontent.com/google-ai-edge/gallery/refs/heads/main/model_allowlists"
+  "https://raw.githubusercontent.com/mcmarius11/gallery/refs/heads/echo/model_allowlists"
 
 private const val TEST_MODEL_ALLOW_LIST = ""
 
@@ -824,19 +824,28 @@ constructor(
         }
 
         if (modelAllowlist == null) {
-          // Load from github.
-          var version = BuildConfig.VERSION_NAME.replace(".", "_")
-          val url = getAllowlistUrl(version)
-          Log.d(TAG, "Loading model allowlist from internet. Url: $url")
-          val data = getJsonResponse<ModelAllowlist>(url = url)
-          modelAllowlist = data?.jsonObj
+          // Load from github, trying current version then falling back to previous versions.
+          val versionParts = BuildConfig.VERSION_NAME.split(".")
+          val major = versionParts.getOrNull(0)?.toIntOrNull() ?: 1
+          val minor = versionParts.getOrNull(1)?.toIntOrNull() ?: 0
+          val patch = versionParts.getOrNull(2)?.toIntOrNull() ?: 0
+
+          for (p in patch downTo maxOf(0, patch - 5)) {
+            val version = "${major}_${minor}_$p"
+            val url = getAllowlistUrl(version)
+            Log.d(TAG, "Trying model allowlist URL: $url")
+            val data = getJsonResponse<ModelAllowlist>(url = url)
+            if (data?.jsonObj != null) {
+              modelAllowlist = data.jsonObj
+              Log.d(TAG, "Loaded model allowlist from version $version")
+              saveModelAllowlistToDisk(modelAllowlistContent = data.textContent ?: "{}")
+              break
+            }
+          }
 
           if (modelAllowlist == null) {
-            Log.w(TAG, "Failed to load model allowlist from internet. Trying to load it from disk")
+            Log.w(TAG, "All version URLs failed. Trying to load allowlist from disk")
             modelAllowlist = readModelAllowlistFromDisk()
-          } else {
-            Log.d(TAG, "Done: loading model allowlist from internet")
-            saveModelAllowlistToDisk(modelAllowlistContent = data?.textContent ?: "{}")
           }
         }
 
