@@ -87,20 +87,10 @@ class KokoroTtsEngine : TtsEngine {
         ),
       )
 
-      crashLog("init(#$instanceId): calling OfflineTts(config), model=${File(modelDir, "model.onnx").absolutePath}")
+      crashLog("init(#$instanceId): calling OfflineTts(config)")
       offlineTts = OfflineTts(config = config)
       sampleRate = offlineTts!!.sampleRate()
       val numSpeakers = offlineTts!!.numSpeakers()
-
-      // Smoke-test: try a simple generate() (no callback) to catch crashes early
-      crashLog("init(#$instanceId): smoke-test generate('Hello'), ptr=${System.identityHashCode(offlineTts)}")
-      try {
-        val testAudio = offlineTts!!.generate(text = "Hello", sid = 0, speed = 1.0f)
-        crashLog("init(#$instanceId): smoke-test OK, ${testAudio.samples.size} samples, rate=${testAudio.sampleRate}")
-      } catch (e: Exception) {
-        crashLog("init(#$instanceId): smoke-test FAILED: ${e.javaClass.simpleName}: ${e.message}")
-        // Don't fail init — the smoke test is just diagnostic
-      }
 
       scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
       initialized = true
