@@ -57,16 +57,31 @@ object KokoroModelManager {
     }
   }
 
+  /** All files that must exist for TTS to work. */
+  private val REQUIRED_MODEL_FILES = listOf(
+    "model.onnx",
+    "voices.bin",
+    "tokens.txt",
+    "espeak-ng-data/phontab",
+    "espeak-ng-data/phondata",
+    "espeak-ng-data/phondata-manifest",
+    "espeak-ng-data/intonations",
+    "espeak-ng-data/phonindex",
+    "espeak-ng-data/en_dict",
+  )
+
   fun checkModelReady(context: Context): Boolean {
     val modelDir = getModelDir(context)
     if (!modelDir.exists()) return false
-    // Check that model.onnx exists (main file)
-    val modelFile = File(modelDir, "model.onnx")
-    val ready = modelFile.exists()
-    if (ready) {
-      _status.value = KokoroModelStatus.READY
+
+    val missing = REQUIRED_MODEL_FILES.filter { !File(modelDir, it).exists() }
+    if (missing.isNotEmpty()) {
+      Log.w(TAG, "Kokoro model incomplete, missing: $missing")
+      return false
     }
-    return ready
+
+    _status.value = KokoroModelStatus.READY
+    return true
   }
 
   suspend fun ensureModelReady(context: Context) {
