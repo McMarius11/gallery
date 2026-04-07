@@ -18,17 +18,11 @@ package com.google.ai.edge.gallery
 
 import android.app.Application
 import android.content.Context
-import android.util.Log
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
-import com.google.ai.edge.gallery.util.LocalCrashReportSenderFactory
 import com.google.ai.edge.gallery.util.NativeCrashHandler
 import com.google.firebase.FirebaseApp
 import dagger.hilt.android.HiltAndroidApp
-import org.acra.ACRA
-import org.acra.ReportField
-import org.acra.config.CoreConfigurationBuilder
-import org.acra.plugins.SimplePluginLoader
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -39,31 +33,14 @@ class GalleryApplication : Application() {
   override fun attachBaseContext(base: Context) {
     super.attachBaseContext(base)
 
-    // ACRA: catches Java/Kotlin exceptions
-    ACRA.init(this, CoreConfigurationBuilder()
-      .setPluginLoader(SimplePluginLoader(LocalCrashReportSenderFactory::class.java))
-      .setReportContent(
-        ReportField.STACK_TRACE,
-        ReportField.APP_VERSION_NAME,
-        ReportField.APP_VERSION_CODE,
-        ReportField.TOTAL_MEM_SIZE,
-        ReportField.AVAILABLE_MEM_SIZE,
-        ReportField.THREAD_DETAILS,
-        ReportField.LOGCAT,
-        ReportField.ANDROID_VERSION,
-        ReportField.PHONE_MODEL,
-        ReportField.BRAND,
-      )
-    )
-
-    // xCrash: catches native SIGABRT/SIGSEGV crashes
+    // xCrash: catches both Java exceptions AND native SIGABRT/SIGSEGV
     NativeCrashHandler.init(this)
   }
 
   override fun onCreate() {
     super.onCreate()
 
-    // Check for native crash tombstones from previous run
+    // Check for crash tombstones from previous run
     NativeCrashHandler.checkPendingCrash(this)
 
     // Load saved theme.
