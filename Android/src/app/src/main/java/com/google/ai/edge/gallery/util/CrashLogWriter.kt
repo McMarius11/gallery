@@ -2,7 +2,9 @@ package com.google.ai.edge.gallery.util
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.util.Log
+import com.google.ai.edge.gallery.ui.crash.CrashActivity
 import java.io.File
 import java.util.Date
 
@@ -29,7 +31,15 @@ object CrashLogWriter {
         sb.appendLine()
         sb.appendLine("=== RECENT LOGCAT (W/E/F) ===")
         sb.appendLine(AppLogReader.readRecentLogs())
-        File(app.filesDir, CRASH_FILE).writeText(sb.toString())
+        val crashText = sb.toString()
+        File(app.filesDir, CRASH_FILE).writeText(crashText)
+
+        // Launch CrashActivity in a separate process to show the log
+        val intent = Intent(app, CrashActivity::class.java).apply {
+          putExtra(CrashActivity.EXTRA_CRASH_LOG, crashText)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        app.startActivity(intent)
       } catch (_: Exception) {
         // Best effort - don't crash the crash handler
       }
