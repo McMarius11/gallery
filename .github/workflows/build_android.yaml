@@ -95,9 +95,6 @@ jobs:
         if: ${{ env.SIGNING_KEYSTORE_PASSWORD != '' }}
         run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > /tmp/echo-release.jks
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
@@ -111,19 +108,10 @@ jobs:
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-      - name: Rename APKs with version info
+      - name: Rename APK with version info
         run: |
-          mv app/build/outputs/apk/debug/app-debug.apk \
-             app/build/outputs/apk/debug/echo-v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.short_sha }}-debug.apk
           mv app/build/outputs/apk/release/app-release.apk \
              app/build/outputs/apk/release/echo-v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.short_sha }}-release.apk
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: echo-debug-apk
-          path: Android/src/app/build/outputs/apk/debug/*.apk
-          retention-days: 30
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
