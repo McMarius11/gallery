@@ -55,9 +55,19 @@ class KokoroTtsEngine : TtsEngine {
     }
     if (!KokoroModelManager.checkModelReady(context)) {
       Log.e(TAG, "Kokoro model not ready, refusing to initialize native engine")
+      crashLog("init ABORTED: model not ready")
       return
     }
     val modelDir = KokoroModelManager.getModelDir(context)
+
+    // Log file sizes for debugging
+    val filesToLog = listOf("model.onnx", "voices.bin", "tokens.txt",
+      "espeak-ng-data/en_dict", "espeak-ng-data/phondata")
+    for (f in filesToLog) {
+      val file = File(modelDir, f)
+      Log.d(TAG, "File: $f = ${if (file.exists()) "${file.length()} bytes" else "MISSING"}")
+    }
+    crashLog("init: files OK, creating OfflineTts")
 
     try {
       val config = OfflineTtsConfig(

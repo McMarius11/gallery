@@ -23,6 +23,7 @@ import com.google.ai.edge.gallery.tts.KokoroModelManager
 import com.google.ai.edge.gallery.tts.KokoroModelStatus
 import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.TtsEngine
+import com.google.ai.edge.gallery.ui.home.getSavedVoiceId
 
 private const val TAG = "TtsManager"
 
@@ -69,7 +70,10 @@ object TtsManager {
       if (kokoroEngine.isReady()) {
         setEngine(kokoroEngine)
         kokoroInitialized = true
-        Log.w(TAG, "Kokoro TTS engine set successfully")
+        // Restore persisted voice selection
+        val savedVoice = getSavedVoiceId(context)
+        kokoroEngine.setVoice(savedVoice)
+        Log.w(TAG, "Kokoro TTS engine set successfully, voice=$savedVoice")
       } else {
         Log.e(TAG, "Kokoro TTS engine failed to initialize")
       }

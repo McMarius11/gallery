@@ -27,10 +27,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,22 +42,33 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MultiChoiceSegmentedButtonRow
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,11 +88,15 @@ import androidx.compose.ui.window.Dialog
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.proto.Theme
+import com.google.ai.edge.gallery.tts.KokoroModelManager
+import com.google.ai.edge.gallery.tts.KokoroModelStatus
 import com.google.ai.edge.gallery.ui.common.ClickableLink
+import com.google.ai.edge.gallery.ui.common.chat.TtsManager
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -187,6 +205,9 @@ fun SettingsDialog(
               }
             }
           }
+
+          // Kokoro TTS status and voice selection.
+          KokoroTtsSection()
 
           // HF Token management.
           Column(
@@ -361,6 +382,150 @@ fun SettingsDialog(
 
   if (showDebugLogs) {
     DebugLogsDialog(onDismissed = { showDebugLogs = false })
+  }
+}
+
+private const val PREFS_TTS = "tts_prefs"
+private const val PREF_VOICE_ID = "kokoro_voice_id"
+
+fun getSavedVoiceId(context: Context): Int {
+  return context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
+    .getInt(PREF_VOICE_ID, 0)
+}
+
+private fun saveVoiceId(context: Context, id: Int) {
+  context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
+    .edit().putInt(PREF_VOICE_ID, id).apply()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KokoroTtsSection() {
+  val context = LocalContext.current
+  val scope = rememberCoroutineScope()
+  val kokoroStatus by KokoroModelManager.status.collectAsState()
+  val downloadProgress by KokoroModelManager.downloadProgress.collectAsState()
+  val lastError by KokoroModelManager.lastError.collectAsState()
+
+  Column(
+    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Text(
+      "Voice / TTS",
+      style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+    )
+
+    // Status indicator
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      val (icon, color, statusText) = when (kokoroStatus) {
+        KokoroModelStatus.READY -> Triple(
+          Icons.Rounded.CheckCircle,
+          MaterialTheme.colorScheme.primary,
+          "Kokoro TTS ready",
+        )
+        KokoroModelStatus.DOWNLOADING -> Triple(
+          Icons.Rounded.CloudDownload,
+          MaterialTheme.colorScheme.tertiary,
+          "Downloading... ${(downloadProgress * 100).toInt()}%",
+        )
+        KokoroModelStatus.ERROR -> Triple(
+          Icons.Rounded.Cancel,
+          MaterialTheme.colorScheme.error,
+          "Error",
+        )
+        KokoroModelStatus.NOT_DOWNLOADED -> Triple(
+          Icons.Rounded.HourglassEmpty,
+          MaterialTheme.colorScheme.onSurfaceVariant,
+          "Not downloaded",
+        )
+      }
+      Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+      Spacer(Modifier.width(6.dp))
+      Text(statusText, style = MaterialTheme.typography.bodyMedium, color = color)
+    }
+
+    // Show download progress bar
+    if (kokoroStatus == KokoroModelStatus.DOWNLOADING) {
+      LinearProgressIndicator(
+        progress = { downloadProgress },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+      )
+    }
+
+    // Show error message
+    if (kokoroStatus == KokoroModelStatus.ERROR && lastError != null) {
+      Text(
+        lastError ?: "",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+      )
+    }
+
+    // Action buttons
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      when (kokoroStatus) {
+        KokoroModelStatus.NOT_DOWNLOADED, KokoroModelStatus.ERROR -> {
+          OutlinedButton(onClick = {
+            KokoroModelManager.resetForRetry()
+            scope.launch { TtsManager.ensureKokoroEngine(context) }
+          }) {
+            Text(if (kokoroStatus == KokoroModelStatus.ERROR) "Retry" else "Download")
+          }
+        }
+        KokoroModelStatus.READY -> {
+          OutlinedButton(onClick = {
+            TtsManager.shutdown()
+            KokoroModelManager.deleteModelFiles(context)
+            scope.launch { TtsManager.ensureKokoroEngine(context) }
+          }) {
+            Text("Re-download")
+          }
+        }
+        KokoroModelStatus.DOWNLOADING -> { /* no button during download */ }
+      }
+    }
+
+    // Voice selection (only when Kokoro is ready)
+    val voices = TtsManager.getAvailableVoices()
+    if (voices.isNotEmpty()) {
+      var expanded by remember { mutableStateOf(false) }
+      var selectedVoiceId by remember { mutableStateOf(getSavedVoiceId(context)) }
+      val selectedVoiceName = voices.find { it.first == selectedVoiceId }?.second ?: voices[0].second
+
+      Text(
+        "Voice",
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+        modifier = Modifier.padding(top = 8.dp),
+      )
+      ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+      ) {
+        OutlinedTextField(
+          value = selectedVoiceName,
+          onValueChange = {},
+          readOnly = true,
+          trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+          modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+          textStyle = MaterialTheme.typography.bodyMedium,
+          singleLine = true,
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+          voices.forEach { (id, name) ->
+            DropdownMenuItem(
+              text = { Text(name) },
+              onClick = {
+                selectedVoiceId = id
+                TtsManager.setVoice(id)
+                saveVoiceId(context, id)
+                expanded = false
+              },
+            )
+          }
+        }
+      }
+    }
   }
 }
 

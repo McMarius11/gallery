@@ -75,23 +75,33 @@ object KokoroModelManager {
     val modelDir = getModelDir(context)
     if (!modelDir.exists()) return false
 
+    // Clean up leftover .tmp files from interrupted downloads
+    cleanupTmpFiles(modelDir)
+
+    // Delete truncated/corrupt files so they get re-downloaded
+    for ((filePath, minSize) in MIN_FILE_SIZES) {
+      val file = File(modelDir, filePath)
+      if (file.exists() && file.length() < minSize) {
+        Log.e(TAG, "Deleting corrupt file: $filePath (${file.length()} bytes, min=$minSize)")
+        file.delete()
+      }
+    }
+
     val missing = REQUIRED_MODEL_FILES.filter { !File(modelDir, it).exists() }
     if (missing.isNotEmpty()) {
       Log.w(TAG, "Kokoro model incomplete, missing: $missing")
       return false
     }
 
-    // Validate minimum file sizes to catch truncated downloads
-    for ((filePath, minSize) in MIN_FILE_SIZES) {
-      val file = File(modelDir, filePath)
-      if (file.exists() && file.length() < minSize) {
-        Log.e(TAG, "Kokoro file too small (corrupt?): $filePath = ${file.length()} bytes, min=$minSize")
-        return false
-      }
-    }
-
     _status.value = KokoroModelStatus.READY
     return true
+  }
+
+  private fun cleanupTmpFiles(dir: File) {
+    dir.walkTopDown().filter { it.name.endsWith(".tmp") }.forEach {
+      Log.w(TAG, "Deleting leftover tmp file: ${it.name}")
+      it.delete()
+    }
   }
 
   /** Delete all model files so they can be re-downloaded. */
@@ -116,6 +126,12 @@ object KokoroModelManager {
 
     try {
       downloadAndExtractModel(context)
+      // Log all file sizes for debugging
+      val modelDir = getModelDir(context)
+      REQUIRED_MODEL_FILES.forEach { filePath ->
+        val file = File(modelDir, filePath)
+        Log.w(TAG, "Post-download: $filePath = ${if (file.exists()) "${file.length()} bytes" else "MISSING"}")
+      }
       if (!checkModelReady(context)) {
         throw Exception("Model files incomplete or corrupt after download")
       }
@@ -147,10 +163,16 @@ object KokoroModelManager {
 
     for ((localName, remotePath) in files) {
       val targetFile = File(modelDir, localName)
-      if (targetFile.exists()) {
+      val minSize = MIN_FILE_SIZES[localName]
+      if (targetFile.exists() && (minSize == null || targetFile.length() >= minSize)) {
         completedFiles++
         _downloadProgress.value = completedFiles.toFloat() / totalFiles
         continue
+      }
+      // Delete truncated file before re-downloading
+      if (targetFile.exists()) {
+        Log.w(TAG, "Deleting truncated $localName (${targetFile.length()} bytes, min=$minSize)")
+        targetFile.delete()
       }
 
       val url = URL("$baseUrl$remotePath")
@@ -207,12 +229,8 @@ object KokoroModelManager {
       }
     }
 
-    // Create data_dir placeholder (espeak-ng data for phonemizer)
-    val dataDir = File(modelDir, "data_dir")
-    if (!dataDir.exists()) {
-      // Download espeak-ng data directory
-      downloadEspeakData(modelDir)
-    }
+    // Download espeak-ng data for phonemizer (skips files that already exist)
+    downloadEspeakData(modelDir)
   }
 
   private suspend fun downloadEspeakData(modelDir: File) = withContext(Dispatchers.IO) {
