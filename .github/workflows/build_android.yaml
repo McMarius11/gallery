@@ -180,5 +180,4 @@ jobs:
 
           ---
           _This release was created automatically. Install the APK on your Android device to update._" \
-            --prerelease \
             ./apk/*.apk
