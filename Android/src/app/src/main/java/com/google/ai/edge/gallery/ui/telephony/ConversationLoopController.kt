@@ -1,7 +1,9 @@
 package com.google.ai.edge.gallery.ui.telephony
 
+import android.speech.SpeechRecognizer
 import android.util.Log
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.tts.SherpaAsrEngine
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 import com.google.ai.edge.gallery.ui.common.chat.TtsManager
@@ -19,6 +21,7 @@ private const val TAG = "ConversationLoop"
 private const val MAX_CONSECUTIVE_ERRORS = 5
 
 class ConversationLoopController(
+  private val context: android.content.Context,
   private val holdToDictateViewModel: HoldToDictateViewModel,
   private val llmViewModel: LlmChatViewModel,
   private val telephonyViewModel: TelephonyViewModel,
@@ -31,6 +34,21 @@ class ConversationLoopController(
   private var bargeInJob: Job? = null
 
   fun start() {
+    // Check if any ASR backend is available before starting the call loop
+    val googleAvailable = SpeechRecognizer.isRecognitionAvailable(context)
+    if (!googleAvailable) {
+      val sherpaEngine = SherpaAsrEngine(context)
+      if (!sherpaEngine.isAvailable()) {
+        Log.e(TAG, "No ASR backend available (Google unavailable, Sherpa blocked by previous crashes)")
+        telephonyViewModel.setPhase(CallPhase.IDLE)
+        telephonyViewModel.setError(
+          "Speech recognition unavailable. The ASR model may have been disabled after repeated crashes. " +
+            "Try re-downloading the Whisper model in Settings."
+        )
+        return
+      }
+    }
+
     isActive = true
     consecutiveErrors = 0
     startListening()

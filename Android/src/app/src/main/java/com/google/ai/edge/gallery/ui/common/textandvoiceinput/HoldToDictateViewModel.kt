@@ -74,8 +74,13 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
         }
     } else {
       speechRecognizer = null
-      // Initialize sherpa-onnx ASR engine (lazy - will init on first use)
       sherpaAsrEngine = SherpaAsrEngine(context)
+      // Try early init so any native crash happens now (at app start)
+      // rather than unexpectedly during first voice input
+      if (sherpaAsrEngine?.isAvailable() == true) {
+        Log.w(TAG, "Attempting early Sherpa ASR init…")
+        sherpaAsrEngine?.init()
+      }
     }
 
     // Initialize Intent (used for language/model settings)
@@ -117,7 +122,12 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     onAmplitudeChanged: (Int) -> Unit,
     onError: ((Int) -> Unit)? = null,
   ) {
-    val engine = sherpaAsrEngine ?: return
+    val engine = sherpaAsrEngine
+    if (engine == null || !engine.isAvailable()) {
+      Log.e(TAG, "Sherpa ASR not available (engine=${engine != null}, available=${engine?.isAvailable()})")
+      onError?.invoke(5) ?: onDone("")
+      return
+    }
     setRecognizedText(text = "")
     setRecognizing(recognizing = true)
 

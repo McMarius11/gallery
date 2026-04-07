@@ -31,6 +31,7 @@ private const val MIN_SPEECH_DURATION_MS = 300L
 
 private const val PREFS_NAME = "sherpa_asr_prefs"
 private const val KEY_INIT_CANARY = "init_in_progress"
+private const val KEY_RECOGNIZE_CANARY = "recognize_in_progress"
 private const val KEY_CRASH_COUNT = "native_crash_count"
 private const val MAX_CRASH_COUNT = 2
 
@@ -46,34 +47,40 @@ class SherpaAsrEngine(private val context: Context) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   }
 
+  /**
+   * Whether ASR can be used. Checks crash history, model readiness, and permission.
+   */
   fun isAvailable(): Boolean {
     return !initFailed &&
-      !isInitBlockedByPreviousCrash() &&
+      !isBlockedByPreviousCrash() &&
       AsrModelManager.checkModelReady(context) &&
       ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
   }
 
   /**
-   * Check if a previous init attempt crashed the process (canary flag still set)
-   * or if we've exceeded the max crash count.
+   * Check if a previous JNI call (init or recognize) crashed the process.
+   * Uses canary flags that are set before dangerous calls and cleared after.
+   * If the process died (SIGABRT), the canary remains set on next start.
    */
-  private fun isInitBlockedByPreviousCrash(): Boolean {
-    val canarySet = prefs.getBoolean(KEY_INIT_CANARY, false)
+  private fun isBlockedByPreviousCrash(): Boolean {
+    val initCanary = prefs.getBoolean(KEY_INIT_CANARY, false)
+    val recognizeCanary = prefs.getBoolean(KEY_RECOGNIZE_CANARY, false)
     val crashCount = prefs.getInt(KEY_CRASH_COUNT, 0)
 
-    if (canarySet) {
-      // Previous init caused a process death (SIGABRT) — the canary was never cleared
+    if (initCanary || recognizeCanary) {
+      // A previous JNI call caused a process death (SIGABRT)
       val newCount = crashCount + 1
       prefs.edit()
         .putBoolean(KEY_INIT_CANARY, false)
+        .putBoolean(KEY_RECOGNIZE_CANARY, false)
         .putInt(KEY_CRASH_COUNT, newCount)
         .apply()
-      Log.e(TAG, "Detected previous native crash during init (crash #$newCount)")
+      val source = if (initCanary) "init" else "recognize"
+      Log.e(TAG, "Detected previous native crash during $source (crash #$newCount)")
 
       if (newCount >= MAX_CRASH_COUNT) {
-        Log.e(TAG, "Too many native crashes ($newCount), disabling ASR. Delete model to retry.")
-        // Delete corrupt model files so re-download can fix it
+        Log.e(TAG, "Too many native crashes ($newCount), disabling ASR. Model files deleted for re-download.")
         AsrModelManager.deleteModelFiles(context)
         return true
       }
@@ -88,13 +95,15 @@ class SherpaAsrEngine(private val context: Context) {
   fun resetCrashState() {
     prefs.edit()
       .putBoolean(KEY_INIT_CANARY, false)
+      .putBoolean(KEY_RECOGNIZE_CANARY, false)
       .putInt(KEY_CRASH_COUNT, 0)
       .apply()
+    initFailed = false
   }
 
   fun init(): Boolean {
     if (recognizer != null) return true
-    if (initFailed || isInitBlockedByPreviousCrash()) {
+    if (initFailed || isBlockedByPreviousCrash()) {
       Log.e(TAG, "Init blocked: initFailed=$initFailed, crash count=${prefs.getInt(KEY_CRASH_COUNT, 0)}")
       return false
     }
@@ -125,7 +134,7 @@ class SherpaAsrEngine(private val context: Context) {
 
     return try {
       val config = OfflineRecognizerConfig(
-        featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
+        featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80, dither = 0.0f),
         modelConfig = OfflineModelConfig(
           whisper = OfflineWhisperModelConfig(
             encoder = encoderFile.absolutePath,
@@ -321,6 +330,9 @@ class SherpaAsrEngine(private val context: Context) {
       return
     }
 
+    // Set canary before dangerous JNI calls (decode/getResult can also SIGABRT)
+    prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, true).commit()
+
     try {
       val samples = audioBuffer.copyOf(totalSamples)
       val stream = rec.createStream()
@@ -329,6 +341,9 @@ class SherpaAsrEngine(private val context: Context) {
       val result = rec.getResult(stream)
       stream.free()
 
+      // Recognition succeeded — clear canary
+      prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, false).apply()
+
       val text = result.text.trim()
       Log.w(TAG, "Recognized: \"$text\" (lang=${result.lang})")
 
@@ -336,6 +351,7 @@ class SherpaAsrEngine(private val context: Context) {
         onResult(text)
       }
     } catch (e: Exception) {
+      prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, false).apply()
       Log.e(TAG, "Whisper recognition failed: ${e.message}", e)
       // Reset recognizer on failure - it may be in a bad state
       recognizer = null

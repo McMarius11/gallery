@@ -95,8 +95,10 @@ fun TelephonyCallScreen(
     }
   }
 
+  val context = LocalContext.current
   val conversationLoop = remember(model) {
     ConversationLoopController(
+      context = context.applicationContext,
       holdToDictateViewModel = holdToDictateViewModel,
       llmViewModel = llmViewModel,
       telephonyViewModel = telephonyViewModel,

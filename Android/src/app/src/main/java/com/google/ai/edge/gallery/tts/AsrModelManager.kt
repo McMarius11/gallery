@@ -56,8 +56,8 @@ object AsrModelManager {
 
     // Check existence AND minimum file sizes to detect corrupt/truncated downloads.
     // Encoder ~30MB, decoder ~17MB, tokens ~10KB
-    val ready = encoder.exists() && encoder.length() > 1_000_000 &&
-      decoder.exists() && decoder.length() > 1_000_000 &&
+    val ready = encoder.exists() && encoder.length() > 20_000_000 &&
+      decoder.exists() && decoder.length() > 10_000_000 &&
       tokens.exists() && tokens.length() > 1_000
 
     if (ready) {
@@ -87,7 +87,9 @@ object AsrModelManager {
     try {
       downloadModel(context)
       _status.value = AsrModelStatus.READY
-      Log.w(TAG, "Whisper ASR model download complete, status=READY")
+      // Reset crash state so ASR can be retried with fresh model files
+      SherpaAsrEngine(context).resetCrashState()
+      Log.w(TAG, "Whisper ASR model download complete, status=READY, crash state reset")
     } catch (e: Exception) {
       val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
       Log.e(TAG, "Failed to download Whisper ASR model: $errorMsg", e)
