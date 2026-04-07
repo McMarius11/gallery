@@ -3,6 +3,7 @@ package com.google.ai.edge.gallery.ui.crash
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -10,7 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,33 +20,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.ai.edge.gallery.util.CrashLogReader
 
 /**
  * Activity shown after a crash. Runs in a separate process (:crash)
  * so it survives the death of the main app process.
  *
- * Shows the crash stacktrace and lets the user copy it to clipboard.
+ * Shows the crash stacktrace with Copy, Share, Restart, and Close buttons.
  */
 class CrashActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-
-    // Clear the crash log immediately so we don't show it again
-    // if CrashActivity itself crashes (prevents infinite loop).
-    CrashLogReader.clearCrashLog(this)
 
     val crashLog = intent.getStringExtra(EXTRA_CRASH_LOG)
       ?: "No crash log available."
@@ -58,12 +53,19 @@ class CrashActivity : ComponentActivity() {
             clipboard.setPrimaryClip(ClipData.newPlainText("Echo Crash Log", crashLog))
             Toast.makeText(this, "Crash log copied to clipboard", Toast.LENGTH_SHORT).show()
           },
+          onShare = {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+              type = "text/plain"
+              putExtra(Intent.EXTRA_SUBJECT, "Echo Crash Log")
+              putExtra(Intent.EXTRA_TEXT, crashLog)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share crash log"))
+          },
           onRestart = {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
               intent.addFlags(
-                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                  android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
               )
               startActivity(intent)
             }
@@ -80,10 +82,12 @@ class CrashActivity : ComponentActivity() {
   }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CrashScreen(
   crashLog: String,
   onCopy: () -> Unit,
+  onShare: () -> Unit,
   onRestart: () -> Unit,
   onClose: () -> Unit,
 ) {
@@ -104,15 +108,21 @@ private fun CrashScreen(
       )
 
       Text(
-        text = "Copy the log below and share it with the developer.",
+        text = "Tap Share to send the crash log, or find it in Downloads/echo_crash_log.txt",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
 
       // Button row
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onCopy) {
-          Text("Copy Log")
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Button(onClick = onShare) {
+          Text("Share")
+        }
+        OutlinedButton(onClick = onCopy) {
+          Text("Copy")
         }
         OutlinedButton(onClick = onRestart) {
           Text("Restart App")
