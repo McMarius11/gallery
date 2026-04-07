@@ -81,8 +81,8 @@ class KokoroTtsEngine : TtsEngine {
             dataDir = File(modelDir, "espeak-ng-data").absolutePath,
             lengthScale = 1.0f,
           ),
-          numThreads = 4,
-          debug = true,
+          numThreads = 1,
+          debug = false,
           provider = "cpu",
         ),
       )
