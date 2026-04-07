@@ -128,15 +128,12 @@ object NativeCrashHandler {
       }
     }
 
-    // 3. Append system crash buffer only if it has new content since last shown
+    // 3. Always append system crash buffer for diagnostics.
+    // The buffer persists across restarts, so it may contain old entries,
+    // but filtering risks hiding new crashes with similar stack traces.
     val crashBuffer = AppLogReader.readCrashBuffer()
     if (crashBuffer.isNotBlank()) {
-      val bufferHash = crashBuffer.hashCode()
-      val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-      val lastShownHash = prefs.getInt(KEY_SHOWN_CRASH_HASH, 0)
-      if (bufferHash != lastShownHash) {
-        parts.add("=== SYSTEM CRASH BUFFER ===\n\n$crashBuffer")
-      }
+      parts.add("=== SYSTEM CRASH BUFFER ===\n\n$crashBuffer")
     }
 
     return if (parts.isNotEmpty()) parts.joinToString("\n\n") else null
