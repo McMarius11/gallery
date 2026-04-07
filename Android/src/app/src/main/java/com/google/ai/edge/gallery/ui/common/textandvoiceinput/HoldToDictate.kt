@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.ui.common.chat.TtsManager
 import com.google.ai.edge.gallery.ui.common.getTaskBgGradientColors
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -118,6 +119,8 @@ fun HoldToDictate(
                       // Tap while listening → stop recognition.
                       viewModel.stopSpeechRecognition()
                     } else {
+                      // Stop TTS before starting recognition to prevent feedback loop.
+                      TtsManager.stop()
                       // Tap to start listening. SpeechRecognizer auto-stops on silence.
                       viewModel.startSpeechRecognition(
                         onDone = onDone,

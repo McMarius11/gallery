@@ -65,7 +65,11 @@ class KokoroTtsEngine : TtsEngine {
   }
 
   override fun speak(text: String, onDone: (() -> Unit)?) {
-    if (!initialized || text.isBlank()) return
+    if (!initialized || text.isBlank()) {
+      // Engine not ready or empty text — invoke callback immediately so voice flow continues.
+      onDone?.invoke()
+      return
+    }
 
     stop()
     onSpeakingDone = onDone

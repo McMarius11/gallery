@@ -35,6 +35,9 @@ class AndroidTtsEngine : TtsEngine {
       onSpeakingDone = onDone
       val cleanText = cleanMarkdown(text)
       tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "echo_tts")
+    } else {
+      // Engine not ready or empty text — invoke callback immediately so voice flow continues.
+      onDone?.invoke()
     }
   }
 

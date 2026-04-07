@@ -173,6 +173,11 @@ class MainActivity : ComponentActivity() {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
   }
 
+  override fun onDestroy() {
+    super.onDestroy()
+    com.google.ai.edge.gallery.ui.common.chat.TtsManager.shutdown()
+  }
+
   override fun onResume() {
     super.onResume()
 

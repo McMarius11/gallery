@@ -88,6 +88,12 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
       }
   }
 
+  override fun onCleared() {
+    super.onCleared()
+    speechRecognizer?.destroy()
+    sherpaAsrEngine?.free()
+  }
+
   fun startSpeechRecognition(
     onDone: (String) -> Unit,
     onAmplitudeChanged: (Int) -> Unit,
