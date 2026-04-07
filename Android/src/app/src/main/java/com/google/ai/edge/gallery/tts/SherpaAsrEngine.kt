@@ -32,10 +32,24 @@ private const val MIN_SPEECH_DURATION_MS = 300L
 private const val PREFS_NAME = "sherpa_asr_prefs"
 private const val KEY_INIT_CANARY = "init_in_progress"
 private const val KEY_RECOGNIZE_CANARY = "recognize_in_progress"
+private const val KEY_CANARY_TIMESTAMP = "canary_set_at"
 private const val KEY_CRASH_COUNT = "native_crash_count"
 private const val MAX_CRASH_COUNT = 1
+// If the canary was set more than 30s ago, it was likely an OOM kill, not a SIGABRT
+private const val CANARY_TIMEOUT_MS = 30_000L
 
 class SherpaAsrEngine(private val context: Context) {
+
+  companion object {
+    /**
+     * Quick check if ASR is blocked by previous native crashes, without
+     * creating a full engine instance. Used by ConversationLoopController.
+     */
+    fun isBlockedByCrashHistory(context: Context): Boolean {
+      val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+      return prefs.getInt(KEY_CRASH_COUNT, 0) >= MAX_CRASH_COUNT
+    }
+  }
   private var recognizer: OfflineRecognizer? = null
   private var audioRecord: AudioRecord? = null
   private var recordingJob: Job? = null
@@ -69,20 +83,31 @@ class SherpaAsrEngine(private val context: Context) {
     val crashCount = prefs.getInt(KEY_CRASH_COUNT, 0)
 
     if (initCanary || recognizeCanary) {
-      // A previous JNI call caused a process death (SIGABRT)
-      val newCount = crashCount + 1
+      val canaryAge = System.currentTimeMillis() - prefs.getLong(KEY_CANARY_TIMESTAMP, 0)
+
+      // Clear canary flags regardless
       prefs.edit()
         .putBoolean(KEY_INIT_CANARY, false)
         .putBoolean(KEY_RECOGNIZE_CANARY, false)
-        .putInt(KEY_CRASH_COUNT, newCount)
         .apply()
-      val source = if (initCanary) "init" else "recognize"
-      Log.e(TAG, "Detected previous native crash during $source (crash #$newCount)")
 
-      if (newCount >= MAX_CRASH_COUNT) {
-        Log.e(TAG, "Too many native crashes ($newCount), disabling ASR. Model files deleted for re-download.")
-        AsrModelManager.deleteModelFiles(context)
-        return true
+      if (canaryAge > CANARY_TIMEOUT_MS) {
+        // Canary was set too long ago — likely an OOM kill or normal app restart,
+        // not a SIGABRT (which kills the process within milliseconds).
+        val source = if (initCanary) "init" else "recognize"
+        Log.w(TAG, "Canary from $source was ${canaryAge}ms old, likely OOM kill — not counting as crash")
+      } else {
+        // Genuine native crash (SIGABRT) — process died within seconds of the JNI call
+        val newCount = crashCount + 1
+        prefs.edit().putInt(KEY_CRASH_COUNT, newCount).apply()
+        val source = if (initCanary) "init" else "recognize"
+        Log.e(TAG, "Detected native crash during $source (${canaryAge}ms ago, crash #$newCount)")
+
+        if (newCount >= MAX_CRASH_COUNT) {
+          Log.e(TAG, "Too many native crashes ($newCount), disabling ASR. Model files deleted for re-download.")
+          AsrModelManager.deleteModelFiles(context)
+          return true
+        }
       }
     }
 
@@ -96,6 +121,7 @@ class SherpaAsrEngine(private val context: Context) {
     prefs.edit()
       .putBoolean(KEY_INIT_CANARY, false)
       .putBoolean(KEY_RECOGNIZE_CANARY, false)
+      .putLong(KEY_CANARY_TIMESTAMP, 0)
       .putInt(KEY_CRASH_COUNT, 0)
       .apply()
     initFailed = false
@@ -130,7 +156,7 @@ class SherpaAsrEngine(private val context: Context) {
 
     // Set canary BEFORE the dangerous JNI call. If the process dies from SIGABRT,
     // this flag will still be set on next start and we'll know init crashed.
-    prefs.edit().putBoolean(KEY_INIT_CANARY, true).commit()
+    prefs.edit().putBoolean(KEY_INIT_CANARY, true).putLong(KEY_CANARY_TIMESTAMP, System.currentTimeMillis()).commit()
 
     return try {
       val config = OfflineRecognizerConfig(
@@ -331,7 +357,7 @@ class SherpaAsrEngine(private val context: Context) {
     }
 
     // Set canary before dangerous JNI calls (decode/getResult can also SIGABRT)
-    prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, true).commit()
+    prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, true).putLong(KEY_CANARY_TIMESTAMP, System.currentTimeMillis()).commit()
 
     try {
       val samples = audioBuffer.copyOf(totalSamples)

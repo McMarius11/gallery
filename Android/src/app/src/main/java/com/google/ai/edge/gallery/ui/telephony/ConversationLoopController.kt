@@ -36,17 +36,14 @@ class ConversationLoopController(
   fun start() {
     // Check if any ASR backend is available before starting the call loop
     val googleAvailable = SpeechRecognizer.isRecognitionAvailable(context)
-    if (!googleAvailable) {
-      val sherpaEngine = SherpaAsrEngine(context)
-      if (!sherpaEngine.isAvailable()) {
-        Log.e(TAG, "No ASR backend available (Google unavailable, Sherpa blocked by previous crashes)")
-        telephonyViewModel.setPhase(CallPhase.IDLE)
-        telephonyViewModel.setError(
-          "Speech recognition unavailable. The ASR model may have been disabled after repeated crashes. " +
-            "Try re-downloading the Whisper model in Settings."
-        )
-        return
-      }
+    if (!googleAvailable && SherpaAsrEngine.isBlockedByCrashHistory(context)) {
+      Log.e(TAG, "No ASR backend available (Google unavailable, Sherpa blocked by previous crashes)")
+      telephonyViewModel.setPhase(CallPhase.IDLE)
+      telephonyViewModel.setError(
+        "Speech recognition unavailable. The ASR model may have been disabled after repeated crashes. " +
+          "Try re-downloading the Whisper model in Settings."
+      )
+      return
     }
 
     isActive = true
@@ -153,6 +150,7 @@ class ConversationLoopController(
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
       Log.e(TAG, "Too many consecutive errors, stopping loop")
       isActive = false
+      bargeInJob?.cancel()
       holdToDictateViewModel.cancelSpeechRecognition()
       telephonyViewModel.setPhase(CallPhase.IDLE)
       telephonyViewModel.setError("Speech recognition unavailable. Check microphone permission and internet connection.")
