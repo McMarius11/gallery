@@ -19,8 +19,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private const val TAG = "KokoroTtsEngine"
+private val instanceCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
 class KokoroTtsEngine : TtsEngine {
+  private val instanceId = instanceCounter.incrementAndGet()
   @Volatile private var offlineTts: OfflineTts? = null
   private var speakerId: Int = 0
   @Volatile private var audioTrack: AudioTrack? = null
@@ -55,7 +57,7 @@ class KokoroTtsEngine : TtsEngine {
     }
     if (!KokoroModelManager.checkModelReady(context)) {
       Log.e(TAG, "Kokoro model not ready, refusing to initialize native engine")
-      crashLog("init ABORTED: model not ready")
+      crashLog("init(#$instanceId) ABORTED: model not ready")
       return
     }
     val modelDir = KokoroModelManager.getModelDir(context)
@@ -67,7 +69,7 @@ class KokoroTtsEngine : TtsEngine {
       val file = File(modelDir, f)
       Log.d(TAG, "File: $f = ${if (file.exists()) "${file.length()} bytes" else "MISSING"}")
     }
-    crashLog("init: files OK, creating OfflineTts")
+    crashLog("init(#$instanceId): files OK, creating OfflineTts")
 
     try {
       val config = OfflineTtsConfig(
@@ -88,9 +90,11 @@ class KokoroTtsEngine : TtsEngine {
       sampleRate = offlineTts!!.sampleRate()
       scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
       initialized = true
-      Log.d(TAG, "Kokoro TTS initialized, sampleRate=$sampleRate")
+      crashLog("init(#$instanceId): SUCCESS, sampleRate=$sampleRate, ptr exists=${offlineTts != null}")
+      Log.d(TAG, "Kokoro TTS #$instanceId initialized, sampleRate=$sampleRate")
     } catch (e: Exception) {
-      Log.e(TAG, "Failed to initialize Kokoro TTS", e)
+      crashLog("init(#$instanceId): FAILED ${e.javaClass.simpleName}: ${e.message}")
+      Log.e(TAG, "Failed to initialize Kokoro TTS #$instanceId", e)
       initialized = false
     }
   }
@@ -103,7 +107,7 @@ class KokoroTtsEngine : TtsEngine {
     }
 
     Log.w(TAG, "speak() called, text length=${text.length}")
-    crashLog("speak() text=${text.take(100)}")
+    crashLog("speak(#$instanceId) text=${text.take(100)}")
     stop()
     stopped = false
     onSpeakingDone = onDone
@@ -180,6 +184,8 @@ class KokoroTtsEngine : TtsEngine {
   }
 
   override fun shutdown() {
+    crashLog("shutdown(#$instanceId) called, initialized=$initialized, offlineTts=${offlineTts != null}")
+    Log.w(TAG, "shutdown(#$instanceId) called")
     stop()
     scope?.cancel()
     scope = null

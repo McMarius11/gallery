@@ -243,7 +243,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     LaunchedEffect(Unit) {
       // Download both models in parallel
       launch {
-        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context)
+        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context, "LlmVoiceTask.LaunchedEffect")
       }
       launch {
         com.google.ai.edge.gallery.tts.AsrModelManager.ensureModelReady(context)
@@ -341,7 +341,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                     onClick = {
                       com.google.ai.edge.gallery.tts.KokoroModelManager.resetForRetry()
                       kokoroScope.launch {
-                        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context)
+                        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context, "LlmVoiceTask.RetryButton")
                       }
                     },
                   ) {

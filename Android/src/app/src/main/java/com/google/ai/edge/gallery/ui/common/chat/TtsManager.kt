@@ -25,6 +25,7 @@ import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.TtsEngine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val TAG = "TtsManager"
 private const val PREFS_TTS = "tts_prefs"
@@ -36,6 +37,9 @@ object TtsManager {
 
   /** Serializes all init/shutdown operations to prevent double native allocation. */
   private val initMutex = Mutex()
+
+  /** Counts how many times ensureKokoroEngine created a native engine (should be 1). */
+  private val initCount = AtomicInteger(0)
 
   /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
   var onSpeakingDone: (() -> Unit)?
@@ -51,45 +55,82 @@ object TtsManager {
     return kokoroInitialized && engine is KokoroTtsEngine && engine.isReady()
   }
 
+  /** Write debug trace that survives process death. */
+  private fun crashLog(context: Context, msg: String) {
+    try {
+      val file = java.io.File(context.filesDir, "tts_crash_trace.txt")
+      val ts = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+        .format(java.util.Date())
+      file.appendText("$ts [TtsManager] $msg\n")
+      if (file.length() > 50_000) {
+        val lines = file.readLines().takeLast(100)
+        file.writeText(lines.joinToString("\n") + "\n")
+      }
+    } catch (_: Exception) {}
+  }
+
   /**
    * Ensure Kokoro TTS is initialized exactly once. Safe to call from multiple places.
    * Downloads the model if needed, creates the engine, and swaps it into TtsManager.
    * Uses a Mutex so concurrent callers are serialized (only one init at a time).
+   *
+   * @param caller Debug tag identifying which code path is calling (for crash traces)
    */
-  suspend fun ensureKokoroEngine(context: Context) {
+  suspend fun ensureKokoroEngine(context: Context, caller: String = "unknown") {
+    val appCtx = context.applicationContext
     // Quick volatile check — skip mutex entirely if already ready
-    if (isKokoroLive()) return
+    if (isKokoroLive()) {
+      Log.d(TAG, "ensureKokoroEngine($caller): already live, skipping")
+      return
+    }
+
+    crashLog(appCtx, "ensureKokoroEngine($caller): isKokoroLive=false, waiting for mutex (locked=${initMutex.isLocked})")
+    Log.w(TAG, "ensureKokoroEngine($caller): waiting for mutex (locked=${initMutex.isLocked})")
 
     initMutex.withLock {
       // Double-check inside mutex
-      if (isKokoroLive()) return
-
-      Log.w(TAG, "Initializing Kokoro TTS engine...")
-      KokoroModelManager.ensureModelReady(context)
-
-      if (KokoroModelManager.status.value != KokoroModelStatus.READY) {
-        Log.w(TAG, "Kokoro model not ready: ${KokoroModelManager.status.value}")
+      if (isKokoroLive()) {
+        crashLog(appCtx, "ensureKokoroEngine($caller): live inside mutex, skipping")
+        Log.d(TAG, "ensureKokoroEngine($caller): already live inside mutex, skipping")
         return
       }
 
+      crashLog(appCtx, "ensureKokoroEngine($caller): mutex acquired, kokoroInit=$kokoroInitialized, engine=${engine.javaClass.simpleName}, isReady=${engine.isReady()}")
+      Log.w(TAG, "ensureKokoroEngine($caller): Initializing Kokoro TTS engine...")
+      KokoroModelManager.ensureModelReady(appCtx)
+
+      if (KokoroModelManager.status.value != KokoroModelStatus.READY) {
+        crashLog(appCtx, "ensureKokoroEngine($caller): model not ready: ${KokoroModelManager.status.value}")
+        Log.w(TAG, "ensureKokoroEngine($caller): Kokoro model not ready: ${KokoroModelManager.status.value}")
+        return
+      }
+
+      val count = initCount.incrementAndGet()
+      crashLog(appCtx, "ensureKokoroEngine($caller): creating KokoroTtsEngine #$count")
+      Log.w(TAG, "ensureKokoroEngine($caller): creating KokoroTtsEngine #$count")
+
       val kokoroEngine = KokoroTtsEngine()
-      kokoroEngine.init(context)
+      kokoroEngine.init(appCtx)
+
       if (kokoroEngine.isReady()) {
+        crashLog(appCtx, "ensureKokoroEngine($caller): engine #$count ready, shutting down old engine (${engine.javaClass.simpleName})")
         engine.shutdown()
         engine = kokoroEngine
         kokoroInitialized = true
-        // Restore persisted voice selection
-        val savedVoice = getSavedVoiceId(context)
+        val savedVoice = getSavedVoiceId(appCtx)
         engine.setVoice(savedVoice)
-        Log.w(TAG, "Kokoro TTS engine set successfully, voice=$savedVoice")
+        crashLog(appCtx, "ensureKokoroEngine($caller): engine #$count set as active, voice=$savedVoice")
+        Log.w(TAG, "ensureKokoroEngine($caller): Kokoro TTS engine #$count set successfully, voice=$savedVoice")
       } else {
-        Log.e(TAG, "Kokoro TTS engine failed to initialize")
+        crashLog(appCtx, "ensureKokoroEngine($caller): engine #$count FAILED to initialize, shutting down")
+        Log.e(TAG, "ensureKokoroEngine($caller): Kokoro TTS engine #$count failed to initialize")
         kokoroEngine.shutdown()
       }
     }
   }
 
   fun setEngine(newEngine: TtsEngine) {
+    Log.w(TAG, "setEngine: ${engine.javaClass.simpleName} → ${newEngine.javaClass.simpleName}")
     engine.shutdown()
     engine = newEngine
     kokoroInitialized = newEngine is KokoroTtsEngine && newEngine.isReady()
@@ -104,6 +145,7 @@ object TtsManager {
   }
 
   fun shutdown() {
+    Log.w(TAG, "shutdown() called, engine=${engine.javaClass.simpleName}, kokoroInit=$kokoroInitialized, caller=${Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.fileName}:${it.lineNumber}" }}")
     engine.shutdown()
     kokoroInitialized = false
   }

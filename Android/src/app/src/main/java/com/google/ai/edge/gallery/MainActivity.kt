@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
 
     // Attempt to initialize Kokoro TTS if model is already downloaded.
     lifecycleScope.launch {
-      com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(this@MainActivity)
+      com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(this@MainActivity, "MainActivity.onCreate")
     }
 
     modelManagerViewModel.loadModelAllowlist()

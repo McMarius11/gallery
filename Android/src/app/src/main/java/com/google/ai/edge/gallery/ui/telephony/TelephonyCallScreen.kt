@@ -72,7 +72,7 @@ fun TelephonyCallScreen(
   // Ensure Kokoro TTS model is downloaded and engine is swapped in
   LaunchedEffect(Unit) {
     try {
-      TtsManager.ensureKokoroEngine(context)
+      TtsManager.ensureKokoroEngine(context, "TelephonyCallScreen")
     } catch (e: Exception) {
       Log.e("TelephonyCall", "TTS init failed", e)
       telephonyViewModel.setError("TTS init failed: ${e.message}")

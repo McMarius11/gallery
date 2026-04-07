@@ -452,7 +452,7 @@ private fun KokoroTtsSection() {
         KokoroModelStatus.NOT_DOWNLOADED, KokoroModelStatus.ERROR -> {
           OutlinedButton(onClick = {
             KokoroModelManager.resetForRetry()
-            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context) }
+            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context, "SettingsDialog") }
           }) {
             Text(if (kokoroStatus == KokoroModelStatus.ERROR) "Retry" else "Download")
           }
@@ -461,7 +461,7 @@ private fun KokoroTtsSection() {
           OutlinedButton(onClick = {
             TtsManager.shutdown()
             KokoroModelManager.deleteModelFiles(context)
-            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context) }
+            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context, "SettingsDialog") }
           }) {
             Text("Re-download")
           }
