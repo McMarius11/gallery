@@ -19,4 +19,17 @@ object CrashLogReader {
   fun clearCrashLog(context: Context) {
     File(context.filesDir, CRASH_FILE).delete()
   }
+
+  /**
+   * Read the TTS crash trace file. This file is written by KokoroTtsEngine
+   * before each dangerous native call and survives process death.
+   */
+  fun readTtsCrashTrace(context: Context): String? {
+    val file = File(context.filesDir, "tts_crash_trace.txt")
+    return if (file.exists()) file.readText() else null
+  }
+
+  fun clearTtsCrashTrace(context: Context) {
+    File(context.filesDir, "tts_crash_trace.txt").delete()
+  }
 }

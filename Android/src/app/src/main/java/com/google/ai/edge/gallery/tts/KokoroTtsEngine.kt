@@ -29,10 +29,26 @@ class KokoroTtsEngine : TtsEngine {
   private var initialized = false
   private var sampleRate = 22050
   @Volatile private var stopped = false
+  private var appContext: Context? = null
 
   override var onSpeakingDone: (() -> Unit)? = null
 
+  /** Write to a file that survives process death, for crash debugging. */
+  private fun crashLog(msg: String) {
+    try {
+      val ctx = appContext ?: return
+      val file = java.io.File(ctx.filesDir, "tts_crash_trace.txt")
+      file.appendText("${java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())} $msg\n")
+      // Keep file small — truncate if > 50KB
+      if (file.length() > 50_000) {
+        val lines = file.readLines().takeLast(100)
+        file.writeText(lines.joinToString("\n") + "\n")
+      }
+    } catch (_: Exception) {}
+  }
+
   override fun init(context: Context) {
+    appContext = context.applicationContext
     if (initialized) {
       Log.w(TAG, "Already initialized, skipping")
       return
@@ -77,6 +93,7 @@ class KokoroTtsEngine : TtsEngine {
     }
 
     Log.w(TAG, "speak() called, text length=${text.length}")
+    crashLog("speak() text=${text.take(100)}")
     stop()
     stopped = false
     onSpeakingDone = onDone
@@ -85,20 +102,21 @@ class KokoroTtsEngine : TtsEngine {
       try {
         val cleanText = cleanMarkdown(text)
         val sentences = splitIntoSentences(cleanText)
-        Log.w(TAG, "Speaking ${sentences.size} sentences")
+        crashLog("sentences=${sentences.size}")
 
         val track = createAudioTrack()
         audioTrack = track
         track.play()
+        crashLog("AudioTrack created and playing")
 
         for ((i, sentence) in sentences.withIndex()) {
           if (!isActive || stopped) {
-            Log.w(TAG, "Stopped before sentence $i")
+            crashLog("stopped before sentence $i")
             break
           }
           if (sentence.isBlank()) continue
 
-          Log.w(TAG, "Generating sentence $i: \"${sentence.take(50)}...\"")
+          crashLog("generating sentence $i: ${sentence.take(50)}")
           offlineTts?.generateWithCallback(
             text = sentence,
             sid = speakerId,
@@ -108,13 +126,13 @@ class KokoroTtsEngine : TtsEngine {
               try {
                 track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
               } catch (e: Exception) {
-                Log.w(TAG, "AudioTrack write failed (likely released): ${e.message}")
+                crashLog("AudioTrack write FAILED: ${e.message}")
                 return@generateWithCallback 0
               }
               return@generateWithCallback 1
             },
           )
-          Log.w(TAG, "Sentence $i done")
+          crashLog("sentence $i done")
         }
 
         if (isActive) {

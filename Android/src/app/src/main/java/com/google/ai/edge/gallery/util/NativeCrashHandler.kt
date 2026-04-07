@@ -125,7 +125,14 @@ object NativeCrashHandler {
       }
     }
 
-    // 3. Only append system crash buffer if there's a tombstone or crash_log
+    // 3. Append TTS crash trace (file-based, survives process death)
+    val ttsTrace = CrashLogReader.readTtsCrashTrace(context)
+    if (!ttsTrace.isNullOrBlank()) {
+      parts.add("=== TTS CRASH TRACE ===\n\n$ttsTrace")
+      CrashLogReader.clearTtsCrashTrace(context)
+    }
+
+    // 4. Only append system crash buffer if there's a tombstone or crash_log
     // that triggered this check. The buffer persists across reboots and contains
     // old entries — showing it alone just confuses users with stale crashes.
     if (parts.isNotEmpty()) {
