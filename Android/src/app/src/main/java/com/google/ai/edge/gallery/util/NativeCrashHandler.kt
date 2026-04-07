@@ -96,6 +96,8 @@ object NativeCrashHandler {
   }
 
   private fun findCrashLog(context: Context): String? {
+    val parts = mutableListOf<String>()
+
     // 1. Check xCrash tombstone files
     val tombstoneDir = File(context.filesDir, "tombstones")
     if (tombstoneDir.exists()) {
@@ -105,24 +107,28 @@ object NativeCrashHandler {
 
       if (latest != null) {
         val text = try { latest.readText() } catch (_: Exception) { null }
+        if (!text.isNullOrBlank()) parts.add(text)
         // Clean up all tombstones
         tombstoneDir.listFiles()?.forEach { it.delete() }
-        if (!text.isNullOrBlank()) return text
       }
     }
 
     // 2. Check crash_log.txt from callback
-    val crashFile = File(context.filesDir, CRASH_FILE)
-    if (crashFile.exists()) {
-      val text = try { crashFile.readText() } catch (_: Exception) { null }
-      if (!text.isNullOrBlank()) return text
+    if (parts.isEmpty()) {
+      val crashFile = File(context.filesDir, CRASH_FILE)
+      if (crashFile.exists()) {
+        val text = try { crashFile.readText() } catch (_: Exception) { null }
+        if (!text.isNullOrBlank()) parts.add(text)
+      }
     }
 
-    // 3. Check system crash buffer (logcat -b crash)
+    // 3. Always append system crash buffer (has native crash stacktraces)
     val crashBuffer = AppLogReader.readCrashBuffer()
-    if (crashBuffer.isNotBlank()) return "=== NATIVE CRASH (from system log) ===\n\n$crashBuffer"
+    if (crashBuffer.isNotBlank()) {
+      parts.add("=== SYSTEM CRASH BUFFER ===\n\n$crashBuffer")
+    }
 
-    return null
+    return if (parts.isNotEmpty()) parts.joinToString("\n\n") else null
   }
 
   private fun copyToDownloads(crashText: String) {
