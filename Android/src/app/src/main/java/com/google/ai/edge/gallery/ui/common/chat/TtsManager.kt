@@ -147,6 +147,7 @@ object TtsManager {
   fun shutdown() {
     Log.w(TAG, "shutdown() called, engine=${engine.javaClass.simpleName}, kokoroInit=$kokoroInitialized, caller=${Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.fileName}:${it.lineNumber}" }}")
     engine.shutdown()
+    engine = AndroidTtsEngine()  // Reset to safe default so init() won't re-init a dead KokoroTtsEngine
     kokoroInitialized = false
   }
 
