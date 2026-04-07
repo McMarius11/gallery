@@ -88,14 +88,13 @@ android {
   }
   kotlinOptions {
     jvmTarget = "11"
-    freeCompilerArgs += "-Xcontext-receivers"
+    freeCompilerArgs += "-Xcontext-parameters"
   }
   buildFeatures {
     compose = true
     buildConfig = true
   }
   lint {
-    baseline = file("lint-baseline.xml")
     abortOnError = false
   }
 }

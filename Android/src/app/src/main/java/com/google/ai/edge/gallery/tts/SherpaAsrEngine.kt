@@ -127,6 +127,7 @@ class SherpaAsrEngine(private val context: Context) {
     recognizer = null
   }
 
+  @android.annotation.SuppressLint("MissingPermission") // Permission checked by caller (HoldToDictateViewModel)
   private suspend fun recordAndRecognize(
     onAmplitudeChanged: (Int) -> Unit,
     onResult: (String) -> Unit,

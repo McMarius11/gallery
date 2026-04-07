@@ -124,7 +124,7 @@ fun ChatPanel(
   voiceMode: Boolean = false,
 ) {
   val holdToDictateViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel =
-    androidx.hilt.navigation.compose.hiltViewModel()
+    androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
   val holdToDictateUiState by holdToDictateViewModel.uiState.collectAsState()
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
