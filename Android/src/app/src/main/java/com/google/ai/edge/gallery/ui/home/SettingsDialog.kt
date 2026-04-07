@@ -68,7 +68,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,7 +95,6 @@ import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
-import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -385,24 +383,10 @@ fun SettingsDialog(
   }
 }
 
-private const val PREFS_TTS = "tts_prefs"
-private const val PREF_VOICE_ID = "kokoro_voice_id"
-
-fun getSavedVoiceId(context: Context): Int {
-  return context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
-    .getInt(PREF_VOICE_ID, 0)
-}
-
-private fun saveVoiceId(context: Context, id: Int) {
-  context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
-    .edit().putInt(PREF_VOICE_ID, id).apply()
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun KokoroTtsSection() {
   val context = LocalContext.current
-  val scope = rememberCoroutineScope()
   val kokoroStatus by KokoroModelManager.status.collectAsState()
   val downloadProgress by KokoroModelManager.downloadProgress.collectAsState()
   val lastError by KokoroModelManager.lastError.collectAsState()
@@ -468,7 +452,7 @@ private fun KokoroTtsSection() {
         KokoroModelStatus.NOT_DOWNLOADED, KokoroModelStatus.ERROR -> {
           OutlinedButton(onClick = {
             KokoroModelManager.resetForRetry()
-            scope.launch { TtsManager.ensureKokoroEngine(context) }
+            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context) }
           }) {
             Text(if (kokoroStatus == KokoroModelStatus.ERROR) "Retry" else "Download")
           }
@@ -477,7 +461,7 @@ private fun KokoroTtsSection() {
           OutlinedButton(onClick = {
             TtsManager.shutdown()
             KokoroModelManager.deleteModelFiles(context)
-            scope.launch { TtsManager.ensureKokoroEngine(context) }
+            KokoroModelManager.launchDownload(context) { TtsManager.ensureKokoroEngine(context) }
           }) {
             Text("Re-download")
           }
@@ -490,7 +474,7 @@ private fun KokoroTtsSection() {
     val voices = TtsManager.getAvailableVoices()
     if (voices.isNotEmpty()) {
       var expanded by remember { mutableStateOf(false) }
-      var selectedVoiceId by remember { mutableStateOf(getSavedVoiceId(context)) }
+      var selectedVoiceId by remember { mutableStateOf(TtsManager.getSavedVoiceId(context)) }
       val selectedVoiceName = voices.find { it.first == selectedVoiceId }?.second ?: voices[0].second
 
       Text(
@@ -517,8 +501,7 @@ private fun KokoroTtsSection() {
               text = { Text(name) },
               onClick = {
                 selectedVoiceId = id
-                TtsManager.setVoice(id)
-                saveVoiceId(context, id)
+                TtsManager.setVoiceAndSave(context, id)
                 expanded = false
               },
             )

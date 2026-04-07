@@ -248,13 +248,13 @@ fun ModelPageAppBar(
         // Hide config dialog.
         showConfigDialog = false
 
-        // Apply voice selection if changed.
+        // Apply voice selection if changed, and persist.
         val voiceValue = curConfigValues[ConfigKeys.VOICE_SELECTION.label]
         if (voiceValue != null) {
           val voices = TtsManager.getAvailableVoices()
           val selectedVoice = voices.find { it.second == voiceValue as String }
           if (selectedVoice != null) {
-            TtsManager.setVoice(selectedVoice.first)
+            TtsManager.setVoiceAndSave(context, selectedVoice.first)
           }
         }
 

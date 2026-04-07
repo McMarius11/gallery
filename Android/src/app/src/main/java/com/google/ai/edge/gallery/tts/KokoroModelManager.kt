@@ -2,10 +2,13 @@ package com.google.ai.edge.gallery.tts
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -22,6 +25,9 @@ enum class KokoroModelStatus {
 }
 
 object KokoroModelManager {
+  /** App-scoped scope — downloads survive Activity/Dialog lifecycle. */
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
   private val _status = MutableStateFlow(KokoroModelStatus.NOT_DOWNLOADED)
   val status: StateFlow<KokoroModelStatus> = _status.asStateFlow()
 
@@ -71,19 +77,20 @@ object KokoroModelManager {
     "espeak-ng-data/phondata" to 1_000L,
   )
 
+  /**
+   * Pure check: are all required files present and valid?
+   * Does NOT modify files or status — see [repairCorruptFiles] for cleanup.
+   */
   fun checkModelReady(context: Context): Boolean {
     val modelDir = getModelDir(context)
     if (!modelDir.exists()) return false
 
-    // Clean up leftover .tmp files from interrupted downloads
-    cleanupTmpFiles(modelDir)
-
-    // Delete truncated/corrupt files so they get re-downloaded
+    // Check for truncated files
     for ((filePath, minSize) in MIN_FILE_SIZES) {
       val file = File(modelDir, filePath)
       if (file.exists() && file.length() < minSize) {
-        Log.e(TAG, "Deleting corrupt file: $filePath (${file.length()} bytes, min=$minSize)")
-        file.delete()
+        Log.e(TAG, "Corrupt file: $filePath (${file.length()} bytes, min=$minSize)")
+        return false
       }
     }
 
@@ -97,10 +104,27 @@ object KokoroModelManager {
     return true
   }
 
-  private fun cleanupTmpFiles(dir: File) {
-    dir.walkTopDown().filter { it.name.endsWith(".tmp") }.forEach {
+  /**
+   * Delete corrupt/truncated files and leftover .tmp files so the next
+   * download attempt can re-fetch them. Call before [ensureModelReady].
+   */
+  fun repairCorruptFiles(context: Context) {
+    val modelDir = getModelDir(context)
+    if (!modelDir.exists()) return
+
+    // Remove leftover .tmp files from interrupted downloads
+    modelDir.walkTopDown().filter { it.name.endsWith(".tmp") }.forEach {
       Log.w(TAG, "Deleting leftover tmp file: ${it.name}")
       it.delete()
+    }
+
+    // Remove truncated files so download loop re-fetches them
+    for ((filePath, minSize) in MIN_FILE_SIZES) {
+      val file = File(modelDir, filePath)
+      if (file.exists() && file.length() < minSize) {
+        Log.e(TAG, "Deleting corrupt file: $filePath (${file.length()} bytes, min=$minSize)")
+        file.delete()
+      }
     }
   }
 
@@ -116,8 +140,25 @@ object KokoroModelManager {
     _lastError.value = null
   }
 
+  /**
+   * Launch model download in an app-scoped coroutine that survives
+   * Activity/Dialog lifecycle (e.g. user closes Settings while downloading).
+   * Calls [onReady] on completion if provided (e.g. to init the TTS engine).
+   */
+  fun launchDownload(context: Context, onReady: (suspend () -> Unit)? = null) {
+    scope.launch {
+      ensureModelReady(context)
+      if (_status.value == KokoroModelStatus.READY) {
+        onReady?.invoke()
+      }
+    }
+  }
+
   suspend fun ensureModelReady(context: Context) {
     if (checkModelReady(context)) return
+
+    // Clean up corrupt/truncated files before attempting download
+    repairCorruptFiles(context)
 
     _status.value = KokoroModelStatus.DOWNLOADING
     _downloadProgress.value = 0f

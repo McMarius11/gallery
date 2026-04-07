@@ -23,13 +23,14 @@ import com.google.ai.edge.gallery.tts.KokoroModelManager
 import com.google.ai.edge.gallery.tts.KokoroModelStatus
 import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.TtsEngine
-import com.google.ai.edge.gallery.ui.home.getSavedVoiceId
 
 private const val TAG = "TtsManager"
+private const val PREFS_TTS = "tts_prefs"
+private const val PREF_VOICE_ID = "kokoro_voice_id"
 
 object TtsManager {
   private var engine: TtsEngine = AndroidTtsEngine()
-  private var kokoroInitialized = false
+  @Volatile private var kokoroInitialized = false
 
   /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
   var onSpeakingDone: (() -> Unit)?
@@ -72,7 +73,7 @@ object TtsManager {
         kokoroInitialized = true
         // Restore persisted voice selection
         val savedVoice = getSavedVoiceId(context)
-        kokoroEngine.setVoice(savedVoice)
+        engine.setVoice(savedVoice)
         Log.w(TAG, "Kokoro TTS engine set successfully, voice=$savedVoice")
       } else {
         Log.e(TAG, "Kokoro TTS engine failed to initialize")
@@ -102,4 +103,20 @@ object TtsManager {
   fun getAvailableVoices(): List<Pair<Int, String>> = engine.getAvailableVoices()
 
   fun setVoice(id: Int) = engine.setVoice(id)
+
+  /** Set voice and persist the choice. */
+  fun setVoiceAndSave(context: Context, id: Int) {
+    engine.setVoice(id)
+    saveVoiceId(context, id)
+  }
+
+  fun getSavedVoiceId(context: Context): Int {
+    return context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
+      .getInt(PREF_VOICE_ID, 0)
+  }
+
+  private fun saveVoiceId(context: Context, id: Int) {
+    context.getSharedPreferences(PREFS_TTS, Context.MODE_PRIVATE)
+      .edit().putInt(PREF_VOICE_ID, id).apply()
+  }
 }
