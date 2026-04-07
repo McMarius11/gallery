@@ -27,11 +27,12 @@ data class AppUpdateInfo(
 object AppUpdateChecker {
 
     suspend fun checkForUpdate(context: Context): AppUpdateInfo? = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
             val currentVersionCode = getLocalVersionCode(context)
             Log.d(TAG, "Current versionCode: $currentVersionCode")
 
-            val connection = URL(GITHUB_API_URL).openConnection() as HttpURLConnection
+            connection = URL(GITHUB_API_URL).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
             connection.connectTimeout = 10_000
@@ -47,7 +48,11 @@ object AppUpdateChecker {
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             val json = org.json.JSONObject(response)
 
-            val tagName = json.getString("tag_name") // e.g. "v1.0.11-23"
+            val tagName = json.optString("tag_name", "") // e.g. "v1.0.11-23"
+            if (tagName.isBlank()) {
+                Log.e(TAG, "No tag_name in release response")
+                return@withContext null
+            }
             val remoteVersionCode = parseVersionCode(tagName)
             val remoteVersionName = parseVersionName(tagName)
             val releaseNotes = json.optString("body", "")
@@ -67,7 +72,7 @@ object AppUpdateChecker {
             }
 
             // Find the APK asset
-            val assets = json.getJSONArray("assets")
+            val assets = json.optJSONArray("assets") ?: JSONArray()
             val apkUrl = findApkDownloadUrl(assets)
             if (apkUrl == null) {
                 Log.e(TAG, "No APK asset found in release")
@@ -83,6 +88,8 @@ object AppUpdateChecker {
         } catch (e: Exception) {
             Log.e(TAG, "Error checking for update", e)
             null
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -130,13 +137,18 @@ object AppUpdateChecker {
     }
 
     private fun findApkDownloadUrl(assets: JSONArray): String? {
+        // Prefer release APK, fall back to any APK
+        var fallbackUrl: String? = null
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.getString("name")
-            if (name.endsWith("-release.apk") || name.endsWith(".apk")) {
+            if (name.endsWith("-release.apk")) {
                 return asset.getString("browser_download_url")
             }
+            if (fallbackUrl == null && name.endsWith(".apk")) {
+                fallbackUrl = asset.getString("browser_download_url")
+            }
         }
-        return null
+        return fallbackUrl
     }
 }

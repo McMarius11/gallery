@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.Cursor
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
@@ -25,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,19 @@ fun AppUpdateDialog(
 ) {
     val context = LocalContext.current
     var isDownloading by remember { mutableStateOf(false) }
+    // Track the active receiver so we can clean it up
+    var activeReceiver by remember { mutableStateOf<BroadcastReceiver?>(null) }
+
+    // Clean up receiver when dialog leaves composition
+    DisposableEffect(Unit) {
+        onDispose {
+            activeReceiver?.let { receiver ->
+                try {
+                    context.unregisterReceiver(receiver)
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     AlertDialog(
         icon = {
@@ -95,7 +110,12 @@ fun AppUpdateDialog(
             TextButton(
                 onClick = {
                     isDownloading = true
-                    downloadAndInstallApk(context, updateInfo.downloadUrl, updateInfo.versionName)
+                    activeReceiver = downloadAndInstallApk(
+                        context,
+                        updateInfo.downloadUrl,
+                        updateInfo.versionName,
+                        onComplete = { isDownloading = false },
+                    )
                 },
                 enabled = !isDownloading,
             ) {
@@ -115,13 +135,29 @@ fun AppUpdateDialog(
     )
 }
 
-private fun downloadAndInstallApk(context: Context, url: String, versionName: String) {
+/**
+ * Downloads the APK via DownloadManager and installs it on completion.
+ * Returns the BroadcastReceiver so the caller can manage its lifecycle.
+ */
+private fun downloadAndInstallApk(
+    context: Context,
+    url: String,
+    versionName: String,
+    onComplete: () -> Unit,
+): BroadcastReceiver? {
     try {
         val fileName = "echo-v${versionName}-release.apk"
 
-        // Clean up old downloaded APKs
         val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        downloadsDir?.listFiles()?.forEach { file ->
+        if (downloadsDir == null) {
+            Log.e(TAG, "External files directory not available")
+            Toast.makeText(context, "Storage not available", Toast.LENGTH_LONG).show()
+            onComplete()
+            return null
+        }
+
+        // Clean up old downloaded APKs
+        downloadsDir.listFiles()?.forEach { file ->
             if (file.name.startsWith("echo-") && file.name.endsWith(".apk")) {
                 file.delete()
             }
@@ -142,15 +178,26 @@ private fun downloadAndInstallApk(context: Context, url: String, versionName: St
                 val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: return
                 if (id != downloadId) return
 
-                context.unregisterReceiver(this)
+                try {
+                    context.unregisterReceiver(this)
+                } catch (_: Exception) {}
+
+                // Verify download actually succeeded
+                if (!isDownloadSuccessful(downloadManager, downloadId)) {
+                    Log.e(TAG, "Download failed or was cancelled")
+                    Toast.makeText(context, "Download failed", Toast.LENGTH_LONG).show()
+                    onComplete()
+                    return
+                }
 
                 val file = File(downloadsDir, fileName)
-                if (file.exists()) {
+                if (file.exists() && file.length() > 0) {
                     installApk(context, file)
                 } else {
-                    Log.e(TAG, "Downloaded APK file not found: ${file.absolutePath}")
+                    Log.e(TAG, "Downloaded APK file not found or empty: ${file.absolutePath}")
                     Toast.makeText(context, "Download failed", Toast.LENGTH_LONG).show()
                 }
+                onComplete()
             }
         }
 
@@ -161,9 +208,31 @@ private fun downloadAndInstallApk(context: Context, url: String, versionName: St
         )
 
         Toast.makeText(context, "Downloading update...", Toast.LENGTH_SHORT).show()
+        return receiver
     } catch (e: Exception) {
         Log.e(TAG, "Error downloading APK", e)
         Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+        onComplete()
+        return null
+    }
+}
+
+private fun isDownloadSuccessful(downloadManager: DownloadManager, downloadId: Long): Boolean {
+    val query = DownloadManager.Query().setFilterById(downloadId)
+    var cursor: Cursor? = null
+    return try {
+        cursor = downloadManager.query(query)
+        if (cursor != null && cursor.moveToFirst()) {
+            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            if (statusIndex >= 0) {
+                cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+            } else false
+        } else false
+    } catch (e: Exception) {
+        Log.e(TAG, "Error querying download status", e)
+        false
+    } finally {
+        cursor?.close()
     }
 }
 
