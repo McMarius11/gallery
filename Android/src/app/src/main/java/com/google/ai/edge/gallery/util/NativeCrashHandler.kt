@@ -11,6 +11,9 @@ import xcrash.ICrashCallback
 import xcrash.XCrash
 import java.io.File
 
+private const val PREFS_NAME = "crash_handler_prefs"
+private const val KEY_SHOWN_CRASH_HASH = "shown_crash_buffer_hash"
+
 private const val TAG = "NativeCrashHandler"
 private const val CRASH_FILE = "crash_log.txt"
 private const val DOWNLOADS_FILENAME = "echo_crash_log.txt"
@@ -92,6 +95,9 @@ object NativeCrashHandler {
       } catch (e: Exception) {
         Log.e(TAG, "Failed to launch CrashActivity", e)
       }
+
+      // Mark crash as shown so it won't reappear on next start
+      markCrashShown(context, crashText)
     }, 1500)
   }
 
@@ -122,13 +128,36 @@ object NativeCrashHandler {
       }
     }
 
-    // 3. Always append system crash buffer (has native crash stacktraces)
+    // 3. Append system crash buffer only if it has new content since last shown
     val crashBuffer = AppLogReader.readCrashBuffer()
     if (crashBuffer.isNotBlank()) {
-      parts.add("=== SYSTEM CRASH BUFFER ===\n\n$crashBuffer")
+      val bufferHash = crashBuffer.hashCode()
+      val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+      val lastShownHash = prefs.getInt(KEY_SHOWN_CRASH_HASH, 0)
+      if (bufferHash != lastShownHash) {
+        parts.add("=== SYSTEM CRASH BUFFER ===\n\n$crashBuffer")
+      }
     }
 
     return if (parts.isNotEmpty()) parts.joinToString("\n\n") else null
+  }
+
+  /**
+   * Mark the current crash as shown so it won't reappear on next app start.
+   * Deletes crash_log.txt and stores the crash buffer hash.
+   */
+  private fun markCrashShown(context: Context, crashText: String) {
+    // Delete crash_log.txt so it won't be picked up again
+    try { File(context.filesDir, CRASH_FILE).delete() } catch (_: Exception) {}
+
+    // Store hash of crash buffer content so the same buffer isn't shown again
+    val crashBuffer = AppLogReader.readCrashBuffer()
+    if (crashBuffer.isNotBlank()) {
+      context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putInt(KEY_SHOWN_CRASH_HASH, crashBuffer.hashCode())
+        .apply()
+    }
   }
 
   private fun copyToDownloads(crashText: String) {
