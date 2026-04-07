@@ -28,6 +28,7 @@ class KokoroTtsEngine : TtsEngine {
   private var scope: CoroutineScope? = null
   private var initialized = false
   private var sampleRate = 22050
+  @Volatile private var stopped = false
 
   override var onSpeakingDone: (() -> Unit)? = null
 
@@ -72,6 +73,7 @@ class KokoroTtsEngine : TtsEngine {
     }
 
     stop()
+    stopped = false
     onSpeakingDone = onDone
 
     playbackJob = scope?.launch {
@@ -84,7 +86,7 @@ class KokoroTtsEngine : TtsEngine {
         track.play()
 
         for (sentence in sentences) {
-          if (!isActive) break
+          if (!isActive || stopped) break
           if (sentence.isBlank()) continue
 
           offlineTts?.generateWithCallback(
@@ -92,8 +94,17 @@ class KokoroTtsEngine : TtsEngine {
             sid = speakerId,
             speed = 1.0f,
             callback = { samples ->
-              if (!isActive) return@generateWithCallback 0
-              track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+              // Check stopped flag BEFORE writing to AudioTrack.
+              // stop() may have released the track on another thread —
+              // writing to a released track throws, and the exception
+              // propagates into native code causing SIGABRT.
+              if (!isActive || stopped) return@generateWithCallback 0
+              try {
+                track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+              } catch (e: Exception) {
+                Log.w(TAG, "AudioTrack write failed (likely released): ${e.message}")
+                return@generateWithCallback 0
+              }
               return@generateWithCallback 1
             },
           )
@@ -119,6 +130,8 @@ class KokoroTtsEngine : TtsEngine {
   }
 
   override fun stop() {
+    // Set stopped flag FIRST so the native callback sees it before we release the track
+    stopped = true
     playbackJob?.cancel()
     playbackJob = null
     try {
