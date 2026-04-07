@@ -21,12 +21,12 @@ import java.io.File
 private const val TAG = "KokoroTtsEngine"
 
 class KokoroTtsEngine : TtsEngine {
-  private var offlineTts: OfflineTts? = null
+  @Volatile private var offlineTts: OfflineTts? = null
   private var speakerId: Int = 0
   private var audioTrack: AudioTrack? = null
   private var playbackJob: Job? = null
   private var scope: CoroutineScope? = null
-  private var initialized = false
+  @Volatile private var initialized = false
   private var sampleRate = 22050
   @Volatile private var stopped = false
   private var appContext: Context? = null
@@ -96,8 +96,8 @@ class KokoroTtsEngine : TtsEngine {
   }
 
   override fun speak(text: String, onDone: (() -> Unit)?) {
-    if (!initialized || text.isBlank()) {
-      Log.w(TAG, "speak() skipped: initialized=$initialized, blank=${text.isBlank()}")
+    if (!initialized || offlineTts == null || text.isBlank()) {
+      Log.w(TAG, "speak() skipped: initialized=$initialized, offlineTts=${offlineTts != null}, blank=${text.isBlank()}")
       onDone?.invoke()
       return
     }

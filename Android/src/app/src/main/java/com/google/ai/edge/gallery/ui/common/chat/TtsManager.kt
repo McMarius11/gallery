@@ -23,14 +23,19 @@ import com.google.ai.edge.gallery.tts.KokoroModelManager
 import com.google.ai.edge.gallery.tts.KokoroModelStatus
 import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.TtsEngine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "TtsManager"
 private const val PREFS_TTS = "tts_prefs"
 private const val PREF_VOICE_ID = "kokoro_voice_id"
 
 object TtsManager {
-  private var engine: TtsEngine = AndroidTtsEngine()
+  @Volatile private var engine: TtsEngine = AndroidTtsEngine()
   @Volatile private var kokoroInitialized = false
+
+  /** Serializes all init/shutdown operations to prevent double native allocation. */
+  private val initMutex = Mutex()
 
   /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
   var onSpeakingDone: (() -> Unit)?
@@ -41,35 +46,37 @@ object TtsManager {
     engine.init(context)
   }
 
+  /** Check if Kokoro engine is live and usable. */
+  private fun isKokoroLive(): Boolean {
+    return kokoroInitialized && engine is KokoroTtsEngine && engine.isReady()
+  }
+
   /**
    * Ensure Kokoro TTS is initialized exactly once. Safe to call from multiple places.
    * Downloads the model if needed, creates the engine, and swaps it into TtsManager.
+   * Uses a Mutex so concurrent callers are serialized (only one init at a time).
    */
   suspend fun ensureKokoroEngine(context: Context) {
-    if (kokoroInitialized && getAvailableVoices().isNotEmpty()) {
-      return
-    }
+    // Quick volatile check — skip mutex entirely if already ready
+    if (isKokoroLive()) return
 
-    synchronized(this) {
-      if (kokoroInitialized && getAvailableVoices().isNotEmpty()) return
-    }
+    initMutex.withLock {
+      // Double-check inside mutex
+      if (isKokoroLive()) return
 
-    Log.w(TAG, "Initializing Kokoro TTS engine...")
-    KokoroModelManager.ensureModelReady(context)
+      Log.w(TAG, "Initializing Kokoro TTS engine...")
+      KokoroModelManager.ensureModelReady(context)
 
-    if (KokoroModelManager.status.value != KokoroModelStatus.READY) {
-      Log.w(TAG, "Kokoro model not ready: ${KokoroModelManager.status.value}")
-      return
-    }
-
-    synchronized(this) {
-      // Double-check after model download
-      if (kokoroInitialized && getAvailableVoices().isNotEmpty()) return
+      if (KokoroModelManager.status.value != KokoroModelStatus.READY) {
+        Log.w(TAG, "Kokoro model not ready: ${KokoroModelManager.status.value}")
+        return
+      }
 
       val kokoroEngine = KokoroTtsEngine()
       kokoroEngine.init(context)
       if (kokoroEngine.isReady()) {
-        setEngine(kokoroEngine)
+        engine.shutdown()
+        engine = kokoroEngine
         kokoroInitialized = true
         // Restore persisted voice selection
         val savedVoice = getSavedVoiceId(context)
@@ -77,6 +84,7 @@ object TtsManager {
         Log.w(TAG, "Kokoro TTS engine set successfully, voice=$savedVoice")
       } else {
         Log.e(TAG, "Kokoro TTS engine failed to initialize")
+        kokoroEngine.shutdown()
       }
     }
   }
@@ -84,6 +92,7 @@ object TtsManager {
   fun setEngine(newEngine: TtsEngine) {
     engine.shutdown()
     engine = newEngine
+    kokoroInitialized = newEngine is KokoroTtsEngine && newEngine.isReady()
   }
 
   fun speak(text: String, onDone: (() -> Unit)? = null) {
@@ -96,6 +105,7 @@ object TtsManager {
 
   fun shutdown() {
     engine.shutdown()
+    kokoroInitialized = false
   }
 
   fun isReady(): Boolean = engine.isReady()
