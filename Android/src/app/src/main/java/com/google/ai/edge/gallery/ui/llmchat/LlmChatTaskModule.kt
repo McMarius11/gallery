@@ -243,17 +243,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
     LaunchedEffect(Unit) {
       // Download both models in parallel
       launch {
-        com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
-        if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
-          com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
-          com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
-        ) {
-          val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
-          kokoroEngine.init(context)
-          if (kokoroEngine.isReady()) {
-            com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
-          }
-        }
+        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context)
       }
       launch {
         com.google.ai.edge.gallery.tts.AsrModelManager.ensureModelReady(context)
@@ -351,17 +341,7 @@ class LlmVoiceTask @Inject constructor() : CustomTask {
                     onClick = {
                       com.google.ai.edge.gallery.tts.KokoroModelManager.resetForRetry()
                       kokoroScope.launch {
-                        com.google.ai.edge.gallery.tts.KokoroModelManager.ensureModelReady(context)
-                        if (com.google.ai.edge.gallery.tts.KokoroModelManager.status.value ==
-                          com.google.ai.edge.gallery.tts.KokoroModelStatus.READY &&
-                          com.google.ai.edge.gallery.ui.common.chat.TtsManager.getAvailableVoices().isEmpty()
-                        ) {
-                          val kokoroEngine = com.google.ai.edge.gallery.tts.KokoroTtsEngine()
-                          kokoroEngine.init(context)
-                          if (kokoroEngine.isReady()) {
-                            com.google.ai.edge.gallery.ui.common.chat.TtsManager.setEngine(kokoroEngine)
-                          }
-                        }
+                        com.google.ai.edge.gallery.ui.common.chat.TtsManager.ensureKokoroEngine(context)
                       }
                     },
                   ) {

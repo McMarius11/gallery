@@ -17,11 +17,18 @@
 package com.google.ai.edge.gallery.ui.common.chat
 
 import android.content.Context
+import android.util.Log
 import com.google.ai.edge.gallery.tts.AndroidTtsEngine
+import com.google.ai.edge.gallery.tts.KokoroModelManager
+import com.google.ai.edge.gallery.tts.KokoroModelStatus
+import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.TtsEngine
+
+private const val TAG = "TtsManager"
 
 object TtsManager {
   private var engine: TtsEngine = AndroidTtsEngine()
+  private var kokoroInitialized = false
 
   /** Called when TTS finishes speaking an utterance. Set this to auto-restart listening. */
   var onSpeakingDone: (() -> Unit)?
@@ -30,6 +37,43 @@ object TtsManager {
 
   fun init(context: Context) {
     engine.init(context)
+  }
+
+  /**
+   * Ensure Kokoro TTS is initialized exactly once. Safe to call from multiple places.
+   * Downloads the model if needed, creates the engine, and swaps it into TtsManager.
+   */
+  suspend fun ensureKokoroEngine(context: Context) {
+    if (kokoroInitialized && getAvailableVoices().isNotEmpty()) {
+      return
+    }
+
+    synchronized(this) {
+      if (kokoroInitialized && getAvailableVoices().isNotEmpty()) return
+    }
+
+    Log.w(TAG, "Initializing Kokoro TTS engine...")
+    KokoroModelManager.ensureModelReady(context)
+
+    if (KokoroModelManager.status.value != KokoroModelStatus.READY) {
+      Log.w(TAG, "Kokoro model not ready: ${KokoroModelManager.status.value}")
+      return
+    }
+
+    synchronized(this) {
+      // Double-check after model download
+      if (kokoroInitialized && getAvailableVoices().isNotEmpty()) return
+
+      val kokoroEngine = KokoroTtsEngine()
+      kokoroEngine.init(context)
+      if (kokoroEngine.isReady()) {
+        setEngine(kokoroEngine)
+        kokoroInitialized = true
+        Log.w(TAG, "Kokoro TTS engine set successfully")
+      } else {
+        Log.e(TAG, "Kokoro TTS engine failed to initialize")
+      }
+    }
   }
 
   fun setEngine(newEngine: TtsEngine) {

@@ -44,8 +44,6 @@ import androidx.compose.ui.unit.sp
 import android.util.Log
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.tts.KokoroModelManager
-import com.google.ai.edge.gallery.tts.KokoroModelStatus
-import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 import com.google.ai.edge.gallery.ui.common.chat.TtsManager
@@ -74,21 +72,7 @@ fun TelephonyCallScreen(
   // Ensure Kokoro TTS model is downloaded and engine is swapped in
   LaunchedEffect(Unit) {
     try {
-      Log.w("TelephonyCall", "Starting Kokoro model init...")
-      KokoroModelManager.ensureModelReady(context)
-      Log.w("TelephonyCall", "Model status: ${KokoroModelManager.status.value}")
-      if (KokoroModelManager.status.value == KokoroModelStatus.READY &&
-        TtsManager.getAvailableVoices().isEmpty()
-      ) {
-        Log.w("TelephonyCall", "Creating KokoroTtsEngine...")
-        val kokoroEngine = KokoroTtsEngine()
-        kokoroEngine.init(context)
-        Log.w("TelephonyCall", "Engine ready: ${kokoroEngine.isReady()}")
-        if (kokoroEngine.isReady()) {
-          TtsManager.setEngine(kokoroEngine)
-          Log.w("TelephonyCall", "TTS engine set successfully")
-        }
-      }
+      TtsManager.ensureKokoroEngine(context)
     } catch (e: Exception) {
       Log.e("TelephonyCall", "TTS init failed", e)
       telephonyViewModel.setError("TTS init failed: ${e.message}")
