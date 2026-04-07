@@ -226,7 +226,7 @@ class OfflineRecognizer(
     fun decode(stream: OfflineStream) = decode(ptr, stream.ptr)
 
     fun getResult(stream: OfflineStream): OfflineRecognizerResult =
-        getResult(ptr, stream.ptr)
+        getResult(stream.ptr)
 
     fun free() {
         if (ptr != 0L) {
@@ -256,7 +256,7 @@ class OfflineRecognizer(
 
     private external fun decode(ptr: Long, streamPtr: Long)
 
-    private external fun getResult(ptr: Long, streamPtr: Long): OfflineRecognizerResult
+    private external fun getResult(streamPtr: Long): OfflineRecognizerResult
 
     companion object {
         init {
