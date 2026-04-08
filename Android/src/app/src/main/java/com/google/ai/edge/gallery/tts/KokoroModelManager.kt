@@ -66,6 +66,8 @@ object KokoroModelManager {
     "espeak-ng-data/intonations",
     "espeak-ng-data/phonindex",
     "espeak-ng-data/en_dict",
+    // Language definition — espeak-ng needs this to phonemize English
+    "espeak-ng-data/lang/gmw/en",
   )
 
   /** Minimum file sizes to detect truncated/corrupt downloads. */
@@ -282,16 +284,26 @@ object KokoroModelManager {
 
     val baseUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/"
 
-    // Download the phontab, intonation, phondata, and language dictionary files
+    // Download the phontab, intonation, phondata, language dictionary,
+    // and language definition files required by espeak-ng phonemizer.
     val espeakFiles = listOf(
       "espeak-ng-data/phontab",
       "espeak-ng-data/phondata",
       "espeak-ng-data/phondata-manifest",
       "espeak-ng-data/intonations",
       "espeak-ng-data/phonindex",
-      // Language dictionary — required for phonemization. Without en_dict,
-      // generateWithCallback crashes when processing English text.
+      // Language dictionary — required for phonemization.
       "espeak-ng-data/en_dict",
+      // Language definition files — WITHOUT these, espeak-ng cannot
+      // identify or phonemize English, causing SIGABRT at generateWithCallback().
+      "espeak-ng-data/lang/gmw/en",
+      "espeak-ng-data/lang/gmw/en-US",
+      "espeak-ng-data/lang/gmw/en-029",
+      "espeak-ng-data/lang/gmw/en-GB-scotland",
+      "espeak-ng-data/lang/gmw/en-GB-x-gbclan",
+      "espeak-ng-data/lang/gmw/en-GB-x-gbcwmd",
+      "espeak-ng-data/lang/gmw/en-GB-x-rp",
+      "espeak-ng-data/lang/gmw/en-US-nyc",
     )
 
     for (filePath in espeakFiles) {
