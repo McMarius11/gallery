@@ -294,35 +294,44 @@ Users can also edit the persona at runtime: tap the settings icon (gear) → "Sy
 - **Lint:** `abortOnError = false` in build.gradle.kts — lint reports warnings but doesn't fail the build
 - **MODEL_TAR constant:** `KokoroModelManager.MODEL_TAR` references `sherpa-onnx-tts-kokoro-en-v1.0-int8.tar.bz2` which does NOT exist. This is dead code. The actual download uses HuggingFace `kokoro-en-v0_19` individual files. There is no English-only v1.0 model — v1.0 models are all multi-lingual.
 
-### TTS Crash Investigation (April 2025)
+### TTS Crash Investigation (April 2025) — RESOLVED
 
 **Symptom:** App crashes with SIGABRT during `KokoroTtsEngine.generateWithCallback()` on EVERY text, even single word "Test". Init succeeds (sampleRate=24000, speakers=11), plenty of RAM (5GB free).
 
 **Investigation steps taken:**
 1. Added canary pattern to KokoroTtsEngine (like SherpaAsrEngine) — SharedPreferences flags set before/cleared after JNI calls → confirmed crash happens during `generateWithCallback()`, not init
-2. Added TTS smoke test (Settings > "Test TTS") with 7 progressive test phrases → ALL crash, even "Test"
+2. Added TTS smoke test (Settings > "Test TTS") with 7 progressive test phrases → ALL crash with `generateWithCallback()`, even "Test"
 3. Added TTS timeout watchdog to ConversationLoopController → prevents loop hang in SPEAKING phase
 4. Verified native lib version (v1.12.35) and JNI callback signature match Kotlin wrapper
 5. Verified model version (kokoro-en-v0.19) is correct for native lib (official release includes v0.19)
-6. Checked HuggingFace repo file list: 355 espeak-ng files, but only 6 were downloaded
+6. Checked HuggingFace repo file list: 355 espeak-ng files, but only 6 were downloaded → fixed by adding espeak-ng lang files to download list
+7. After espeak-ng fix, TTS still crashed with `generateWithCallback()` → switched to `generate()` (no callback) → **8/8 smoke tests pass**
 
-**Root cause:** Missing `espeak-ng-data/lang/gmw/en` language definition files. espeak-ng needs these to know HOW to phonemize English text. Without them, the native C code crashes with SIGABRT during phonemization — before ONNX inference even starts.
+**Root cause: Bug in sherpa-onnx v1.12.35's JNI callback mechanism.**
+`generateWithCallback()` calls from native C++ back into Kotlin/JVM via JNI during audio generation. This callback transition crashes with SIGABRT. The `generate()` function does the exact same TTS work (same model, same text, same parameters) but returns all samples at once without any JNI callback — and works perfectly.
 
-**Fix:** Added `espeak-ng-data/lang/gmw/en` and `lang/gmw/en-US` to `KokoroModelManager`'s download list and required files check. Existing users auto-repair: `checkModelReady()` detects missing file → triggers re-download of missing files.
+**Contributing factor (fixed earlier):** Missing `espeak-ng-data/lang/gmw/en` language definition files also caused SIGABRT during phonemization. Fixed by adding all required espeak-ng files to `KokoroModelManager`'s download list. Both fixes were necessary.
+
+**Final fix:** Replaced `generateWithCallback()` with `generate()` in `KokoroTtsEngine.speak()`. Instead of streaming audio chunks via JNI callback to AudioTrack during generation, we now generate all samples per sentence first, then write them to AudioTrack in one go.
+
+**Trade-off:** ~1-3s latency before each sentence starts playing (vs immediate streaming with callback). Acceptable because text is split into sentences, so each chunk is short.
+
+**Confirmed working:** 8/8 smoke tests pass (v1.0.13, April 2025):
+- Engine ready (0ms), generate() no callback (1438ms), Single word (2231ms), Simple sentence (3359ms), Numbers (4159ms), Longer text (13555ms), Special chars (5684ms), Question (3073ms)
 
 **What was NOT the cause:**
 - Model version mismatch (v0.19 is correct for v1.12.35)
-- JNI wrapper mismatch (callback signature `([F)Ljava/lang/Integer;` matches)
+- JNI wrapper mismatch (callback signature `([F)Ljava/lang/Integer;` matches — but the callback mechanism itself is broken)
 - Memory issues (5GB RAM free, `lowMemory=false`)
 - Text-specific issues (crashes on all text)
 - Threading issues (numThreads=1)
 - Model file corruption (all files pass size validation)
 
-**Diagnostic tools added:**
+**Diagnostic tools added (remain useful for future debugging):**
 - `KokoroTtsEngine`: Canary pattern, crash counter, initFailed flag, memory logging, AudioTrack state logging
-- `TtsSmokeTest`: 7 progressive tests accessible from Settings
+- `TtsSmokeTest`: 8 progressive tests accessible from Settings > "Test TTS"
 - `ConversationLoopController`: 45s TTS timeout, consecutive TTS error tracking
 - `TtsManager`: try-catch around speak(), crash-history check
 - `DebugLogsDialog`: "TTS Trace" button to view tts_crash_trace.txt
 
-**Status:** Fix deployed (espeak-ng lang files). Awaiting confirmation that TTS works after re-download. If it still crashes, next steps would be: (1) try `generate()` without callback, (2) check if more espeak-ng files are needed, (3) try the int8 model variant from official tar.bz2.
+**IMPORTANT for future sherpa-onnx upgrades:** Do NOT switch back to `generateWithCallback()` without testing. If a future sherpa-onnx version fixes the JNI callback bug, switching back would restore real-time streaming (lower latency). Test with the TTS smoke test first.
