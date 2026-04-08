@@ -1,0 +1,152 @@
+diff --git a/sherpa-onnx/jni/common.h b/sherpa-onnx/jni/common.h
+index 1acf0f1..acbd497 100644
+--- a/sherpa-onnx/jni/common.h
++++ b/sherpa-onnx/jni/common.h
+@@ -142,6 +142,10 @@
+ jobject NewInteger(JNIEnv *env, int32_t value);
+ jobject NewFloat(JNIEnv *env, float value);
+ 
++// Returns the cached JavaVM pointer (set during JNI_OnLoad).
++// Use this to obtain a JNIEnv* on non-JVM threads via GetEnv/AttachCurrentThread.
++JavaVM *GetJavaVM();
++
+ // Template function for non-void return types
+ template <typename Func, typename ReturnType>
+ ReturnType SafeJNI(JNIEnv *env, const char *functionName, Func func,
+diff --git a/sherpa-onnx/jni/jni.cc b/sherpa-onnx/jni/jni.cc
+index 4b2086a..ab371ab 100644
+--- a/sherpa-onnx/jni/jni.cc
++++ b/sherpa-onnx/jni/jni.cc
+@@ -12,6 +12,19 @@
+ #include "sherpa-onnx/csrc/wave-writer.h"
+ #include "sherpa-onnx/jni/common.h"
+ 
++// Global JavaVM pointer, cached in JNI_OnLoad.
++// Needed to obtain a valid JNIEnv* on threads that were not created by the JVM
++// (e.g., ONNX Runtime thread pool workers that invoke TTS callbacks).
++static JavaVM *g_jvm = nullptr;
++
++SHERPA_ONNX_EXTERN_C
++JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
++  g_jvm = vm;
++  return JNI_VERSION_1_6;
++}
++
++JavaVM *GetJavaVM() { return g_jvm; }
++
+ // see
+ // https://stackoverflow.com/questions/29043872/android-jni-return-multiple-variables
+ jobject NewInteger(JNIEnv *env, int32_t value) {
+diff --git a/sherpa-onnx/jni/offline-tts.cc b/sherpa-onnx/jni/offline-tts.cc
+index 39feb3a..bc5de62 100644
+--- a/sherpa-onnx/jni/offline-tts.cc
++++ b/sherpa-onnx/jni/offline-tts.cc
+@@ -543,16 +543,47 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithCallbackImpl(
+   sherpa_onnx::GeneratedAudio audio;
+ 
+   if (callback) {
++    // Create a global ref so the callback survives across threads/JNI frames.
++    // Local refs are only valid within the calling JNI frame and cannot be
++    // safely used in lambdas that may execute on a different thread (e.g.,
++    // ONNX Runtime thread pool workers).
++    jobject global_callback = env->NewGlobalRef(callback);
++    JavaVM *jvm = GetJavaVM();
++
+     std::function<int32_t(const float *, int32_t, float)> callback_wrapper =
+-        [env, callback](const float *samples, int32_t n, float) -> int32_t {
+-      jfloatArray samples_arr = env->NewFloatArray(n);
+-      env->SetFloatArrayRegion(samples_arr, 0, n, samples);
+-      int32_t ret = CallCallback(env, callback, samples_arr);
+-      env->DeleteLocalRef(samples_arr);
++        [jvm, global_callback](const float *samples, int32_t n,
++                               float /*progress*/) -> int32_t {
++      // Obtain a JNIEnv* valid for the current thread.
++      // JNIEnv is thread-local; we must use GetEnv/AttachCurrentThread
++      // rather than capturing the caller's env pointer.
++      JNIEnv *cb_env = nullptr;
++      bool did_attach = false;
++      jint rc =
++          jvm->GetEnv(reinterpret_cast<void **>(&cb_env), JNI_VERSION_1_6);
++      if (rc == JNI_EDETACHED) {
++        if (jvm->AttachCurrentThread(&cb_env, nullptr) != JNI_OK) {
++          return 0;  // Cannot attach; abort generation
++        }
++        did_attach = true;
++      } else if (rc != JNI_OK) {
++        return 0;
++      }
++
++      jfloatArray samples_arr = cb_env->NewFloatArray(n);
++      cb_env->SetFloatArrayRegion(samples_arr, 0, n, samples);
++      int32_t ret = CallCallback(cb_env, global_callback, samples_arr);
++      cb_env->DeleteLocalRef(samples_arr);
++
++      if (did_attach) {
++        jvm->DetachCurrentThread();
++      }
+       return ret;
+     };
+ 
+     audio = tts->Generate(p_text, config, callback_wrapper);
++
++    // Release the global ref now that generation is complete.
++    env->DeleteGlobalRef(global_callback);
+   } else {
+     audio = tts->Generate(p_text, config, nullptr);
+   }
+@@ -574,16 +605,39 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithConfigImpl(
+   sherpa_onnx::GeneratedAudio audio;
+ 
+   if (callback) {
++    jobject global_callback = env->NewGlobalRef(callback);
++    JavaVM *jvm = GetJavaVM();
++
+     std::function<int32_t(const float *, int32_t, float)> callback_wrapper =
+-        [env, callback](const float *samples, int32_t n, float) -> int32_t {
+-      jfloatArray samples_arr = env->NewFloatArray(n);
+-      env->SetFloatArrayRegion(samples_arr, 0, n, samples);
+-      int32_t ret = CallCallback(env, callback, samples_arr);
+-      env->DeleteLocalRef(samples_arr);
++        [jvm, global_callback](const float *samples, int32_t n,
++                               float /*progress*/) -> int32_t {
++      JNIEnv *cb_env = nullptr;
++      bool did_attach = false;
++      jint rc =
++          jvm->GetEnv(reinterpret_cast<void **>(&cb_env), JNI_VERSION_1_6);
++      if (rc == JNI_EDETACHED) {
++        if (jvm->AttachCurrentThread(&cb_env, nullptr) != JNI_OK) {
++          return 0;
++        }
++        did_attach = true;
++      } else if (rc != JNI_OK) {
++        return 0;
++      }
++
++      jfloatArray samples_arr = cb_env->NewFloatArray(n);
++      cb_env->SetFloatArrayRegion(samples_arr, 0, n, samples);
++      int32_t ret = CallCallback(cb_env, global_callback, samples_arr);
++      cb_env->DeleteLocalRef(samples_arr);
++
++      if (did_attach) {
++        jvm->DetachCurrentThread();
++      }
+       return ret;
+     };
+ 
+     audio = tts->Generate(p_text, gen_config, callback_wrapper);
++
++    env->DeleteGlobalRef(global_callback);
+   } else {
+     audio = tts->Generate(p_text, gen_config, nullptr);
+   }
+diff --git a/sherpa-onnx/jni/sherpa-onnx-symbols.lds b/sherpa-onnx/jni/sherpa-onnx-symbols.lds
+index 4931fa0..e1e111d 100644
+--- a/sherpa-onnx/jni/sherpa-onnx-symbols.lds
++++ b/sherpa-onnx/jni/sherpa-onnx-symbols.lds
+@@ -1,5 +1,6 @@
+ {
+   global:
++    JNI_OnLoad;
+     Java_com_k2fsa_sherpa_onnx*;
+   local:
+     *;
