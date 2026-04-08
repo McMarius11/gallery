@@ -143,21 +143,17 @@ class KokoroTtsEngine : TtsEngine {
           if (sentence.isBlank()) continue
 
           crashLog("generating sentence $i: ${sentence.take(50)}")
-          offlineTts?.generateWithCallback(
+          // Use generate() (blocking, no callback) instead of generateWithCallback().
+          // This avoids the JNI callback mechanism which may crash on some devices.
+          val audio = offlineTts?.generate(
             text = sentence,
             sid = speakerId,
             speed = 1.0f,
-            callback = { samples ->
-              if (!isActive || stopped) return@generateWithCallback 0
-              try {
-                track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-              } catch (e: Exception) {
-                crashLog("AudioTrack write FAILED: ${e.message}")
-                return@generateWithCallback 0
-              }
-              return@generateWithCallback 1
-            },
           )
+          if (audio != null && audio.samples.isNotEmpty() && isActive && !stopped) {
+            crashLog("sentence $i generated: ${audio.samples.size} samples")
+            track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+          }
           crashLog("sentence $i done")
         }
 
