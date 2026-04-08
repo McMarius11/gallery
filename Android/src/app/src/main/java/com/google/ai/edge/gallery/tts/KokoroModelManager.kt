@@ -66,6 +66,9 @@ object KokoroModelManager {
     "espeak-ng-data/intonations",
     "espeak-ng-data/phonindex",
     "espeak-ng-data/en_dict",
+    // Language definition files — REQUIRED for phonemization!
+    // Without these, espeak-ng crashes with SIGABRT during generateWithCallback().
+    "espeak-ng-data/lang/gmw/en",
   )
 
   /** Minimum file sizes to detect truncated/corrupt downloads. */
@@ -292,6 +295,12 @@ object KokoroModelManager {
       // Language dictionary — required for phonemization. Without en_dict,
       // generateWithCallback crashes when processing English text.
       "espeak-ng-data/en_dict",
+      // Language definition files — espeak-ng needs these to know HOW to
+      // phonemize English text (phoneme rules, stress patterns, etc.).
+      // Without lang/gmw/en, espeak-ng crashes with SIGABRT in native code
+      // during generateWithCallback(), which cannot be caught by try/catch.
+      "espeak-ng-data/lang/gmw/en",
+      "espeak-ng-data/lang/gmw/en-US",
     )
 
     for (filePath in espeakFiles) {
