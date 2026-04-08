@@ -75,11 +75,13 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     } else {
       speechRecognizer = null
       sherpaAsrEngine = SherpaAsrEngine(context)
-      // Try early init so any native crash happens now (at app start)
-      // rather than unexpectedly during first voice input
-      if (sherpaAsrEngine?.isAvailable() == true) {
-        Log.w(TAG, "Attempting early Sherpa ASR init…")
-        sherpaAsrEngine?.init()
+      // Init on background thread — newFromFile() loads Whisper model and
+      // takes several seconds, which would ANR if run on UI thread.
+      viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        if (sherpaAsrEngine?.isAvailable() == true) {
+          Log.w(TAG, "Attempting early Sherpa ASR init (background)…")
+          sherpaAsrEngine?.init()
+        }
       }
     }
 
