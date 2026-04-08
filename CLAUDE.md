@@ -209,6 +209,7 @@ Checks GitHub Releases API on app start, shows update dialog if newer version ex
 | `tts/KokoroModelManager.kt` | Kokoro model download and status tracking |
 | `tts/SherpaAsrEngine.kt` | Whisper sherpa-onnx ASR inference |
 | `tts/AsrModelManager.kt` | Whisper model download management |
+| `tts/TtsSmokeTest.kt` | TTS smoke test utility (Settings > Test TTS) |
 | `data/PersonaPresets.kt` | Persona preset definitions |
 | `data/Config.kt` | Config keys incl. VOICE_SELECTION |
 | `data/Tasks.kt` | Task IDs and definitions |
@@ -274,14 +275,54 @@ Users can also edit the persona at runtime: tap the settings icon (gear) → "Sy
 - **xCrash** catches both Java exceptions AND native SIGABRT/SIGSEGV
 - Initialized in `GalleryApplication.attachBaseContext()`
 - Crash tombstones checked on next app start via `NativeCrashHandler.checkPendingCrash()`
-- **SherpaAsrEngine** has `initFailed` flag to prevent repeated native crashes — if init fails, it won't retry until app restart
+- **SherpaAsrEngine** has `initFailed` flag + canary pattern to prevent repeated native crashes
+- **KokoroTtsEngine** has the same canary pattern (ported from ASR): SharedPreferences flags set before/cleared after each JNI call. If SIGABRT kills the process, the flag persists → detected on next start → crash counter incremented → TTS disabled after 2 crashes. Also logs memory info, AudioTrack state, and exact sentence being spoken at crash time to `tts_crash_trace.txt`.
+- **ConversationLoopController** has a 45s TTS timeout watchdog — if `onSpeakingDone` never fires (native crash), it recovers the conversation loop instead of hanging forever in SPEAKING phase
+- **TtsManager** wraps `speak()` with try-catch and always invokes `onDone` callback even on error
 - **AsrModelManager** validates model file sizes (not just existence) to detect corrupt downloads
+- **TtsSmokeTest** (Settings > "Test TTS") runs 7 progressive tests to systematically diagnose TTS issues
+- **DebugLogsDialog** has a "TTS Trace" button to view `tts_crash_trace.txt` directly without needing a crash
 
 ### Known Pitfalls
 
-- **Native SIGABRT from sherpa-onnx:** `OfflineRecognizer.newFromFile()` and `getResult()` can crash with SIGABRT if model files are corrupt or Kotlin wrappers don't match the native lib. Cannot be caught by try/catch. The `initFailed` flag in SherpaAsrEngine prevents repeated crashes.
-- **Model file corruption:** HuggingFace downloads can be truncated. `AsrModelManager.checkModelReady()` validates minimum file sizes. Corrupt files are auto-deleted for re-download.
+- **Native SIGABRT from sherpa-onnx:** `OfflineRecognizer.newFromFile()` and `getResult()` can crash with SIGABRT if model files are corrupt or Kotlin wrappers don't match the native lib. Cannot be caught by try/catch. The `initFailed` flag and canary pattern in SherpaAsrEngine and KokoroTtsEngine prevent repeated crashes.
+- **espeak-ng data files:** Kokoro TTS requires espeak-ng language definition files (`espeak-ng-data/lang/gmw/en`) for phonemization. Without them, `generateWithCallback()` crashes with SIGABRT in native code. The `KokoroModelManager` must download ALL required espeak-ng files — not just dictionaries and phondata, but also the `lang/` directory. See "TTS Crash Investigation" below.
+- **Model file corruption:** HuggingFace downloads can be truncated. `AsrModelManager.checkModelReady()` and `KokoroModelManager.checkModelReady()` validate minimum file sizes. Corrupt files are auto-deleted for re-download.
 - **Kotlin compiler flags:** Using `-Xcontext-parameters` (not the deprecated `-Xcontext-receivers`)
 - **hiltViewModel import:** Use `androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel` (the `navigation.compose` variant is deprecated)
 - **AndroidManifest:** Don't add `package=` attribute — it's set via `namespace` in `build.gradle.kts`
 - **Lint:** `abortOnError = false` in build.gradle.kts — lint reports warnings but doesn't fail the build
+- **MODEL_TAR constant:** `KokoroModelManager.MODEL_TAR` references `sherpa-onnx-tts-kokoro-en-v1.0-int8.tar.bz2` which does NOT exist. This is dead code. The actual download uses HuggingFace `kokoro-en-v0_19` individual files. There is no English-only v1.0 model — v1.0 models are all multi-lingual.
+
+### TTS Crash Investigation (April 2025)
+
+**Symptom:** App crashes with SIGABRT during `KokoroTtsEngine.generateWithCallback()` on EVERY text, even single word "Test". Init succeeds (sampleRate=24000, speakers=11), plenty of RAM (5GB free).
+
+**Investigation steps taken:**
+1. Added canary pattern to KokoroTtsEngine (like SherpaAsrEngine) — SharedPreferences flags set before/cleared after JNI calls → confirmed crash happens during `generateWithCallback()`, not init
+2. Added TTS smoke test (Settings > "Test TTS") with 7 progressive test phrases → ALL crash, even "Test"
+3. Added TTS timeout watchdog to ConversationLoopController → prevents loop hang in SPEAKING phase
+4. Verified native lib version (v1.12.35) and JNI callback signature match Kotlin wrapper
+5. Verified model version (kokoro-en-v0.19) is correct for native lib (official release includes v0.19)
+6. Checked HuggingFace repo file list: 355 espeak-ng files, but only 6 were downloaded
+
+**Root cause:** Missing `espeak-ng-data/lang/gmw/en` language definition files. espeak-ng needs these to know HOW to phonemize English text. Without them, the native C code crashes with SIGABRT during phonemization — before ONNX inference even starts.
+
+**Fix:** Added `espeak-ng-data/lang/gmw/en` and `lang/gmw/en-US` to `KokoroModelManager`'s download list and required files check. Existing users auto-repair: `checkModelReady()` detects missing file → triggers re-download of missing files.
+
+**What was NOT the cause:**
+- Model version mismatch (v0.19 is correct for v1.12.35)
+- JNI wrapper mismatch (callback signature `([F)Ljava/lang/Integer;` matches)
+- Memory issues (5GB RAM free, `lowMemory=false`)
+- Text-specific issues (crashes on all text)
+- Threading issues (numThreads=1)
+- Model file corruption (all files pass size validation)
+
+**Diagnostic tools added:**
+- `KokoroTtsEngine`: Canary pattern, crash counter, initFailed flag, memory logging, AudioTrack state logging
+- `TtsSmokeTest`: 7 progressive tests accessible from Settings
+- `ConversationLoopController`: 45s TTS timeout, consecutive TTS error tracking
+- `TtsManager`: try-catch around speak(), crash-history check
+- `DebugLogsDialog`: "TTS Trace" button to view tts_crash_trace.txt
+
+**Status:** Fix deployed (espeak-ng lang files). Awaiting confirmation that TTS works after re-download. If it still crashes, next steps would be: (1) try `generate()` without callback, (2) check if more espeak-ng files are needed, (3) try the int8 model variant from official tar.bz2.
