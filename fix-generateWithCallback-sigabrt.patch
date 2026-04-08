@@ -38,10 +38,10 @@ index 4b2086a..ab371ab 100644
  // https://stackoverflow.com/questions/29043872/android-jni-return-multiple-variables
  jobject NewInteger(JNIEnv *env, int32_t value) {
 diff --git a/sherpa-onnx/jni/offline-tts.cc b/sherpa-onnx/jni/offline-tts.cc
-index 39feb3a..60c94ef 100644
+index 39feb3a..32ae0ba 100644
 --- a/sherpa-onnx/jni/offline-tts.cc
 +++ b/sherpa-onnx/jni/offline-tts.cc
-@@ -401,13 +401,47 @@ static int32_t CallCallback(JNIEnv *env, jobject callback,
+@@ -401,15 +401,50 @@ static int32_t CallCallback(JNIEnv *env, jobject callback,
      return 1;
    }
  
@@ -89,8 +89,11 @@ index 39feb3a..60c94ef 100644
 +  // invoke, boxes the int result to Integer, and returns it.
    jobject result = env->CallObjectMethod(callback, invoke_mid, samples_arr);
    if (env->ExceptionCheck() || !result) {
++    if (result) env->DeleteLocalRef(result);
      env->DeleteLocalRef(cls);
-@@ -543,16 +577,56 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithCallbackImpl(
+     return 1;
+   }
+@@ -543,16 +578,56 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithCallbackImpl(
    sherpa_onnx::GeneratedAudio audio;
  
    if (callback) {
@@ -157,7 +160,7 @@ index 39feb3a..60c94ef 100644
    } else {
      audio = tts->Generate(p_text, config, nullptr);
    }
-@@ -574,16 +648,44 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithConfigImpl(
+@@ -574,16 +649,44 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithConfigImpl(
    sherpa_onnx::GeneratedAudio audio;
  
    if (callback) {
