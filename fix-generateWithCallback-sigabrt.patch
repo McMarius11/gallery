@@ -38,10 +38,59 @@ index 4b2086a..ab371ab 100644
  // https://stackoverflow.com/questions/29043872/android-jni-return-multiple-variables
  jobject NewInteger(JNIEnv *env, int32_t value) {
 diff --git a/sherpa-onnx/jni/offline-tts.cc b/sherpa-onnx/jni/offline-tts.cc
-index 39feb3a..201a6aa 100644
+index 39feb3a..60c94ef 100644
 --- a/sherpa-onnx/jni/offline-tts.cc
 +++ b/sherpa-onnx/jni/offline-tts.cc
-@@ -543,16 +543,56 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithCallbackImpl(
+@@ -401,13 +401,47 @@ static int32_t CallCallback(JNIEnv *env, jobject callback,
+     return 1;
+   }
+ 
++  // Kotlin compiles (FloatArray) -> Int as Function1<FloatArray, Int>.
++  // The JVM bytecode contains:
++  //   - invoke([F)I                              (specialized, unboxed return)
++  //   - invoke(Ljava/lang/Object;)Ljava/lang/Object;  (erased bridge)
++  //
++  // The old signature "([F)Ljava/lang/Integer;" does NOT exist — it's a
++  // hybrid of specialized param + boxed return that Kotlin never generates.
++  //
++  // Try the specialized signature first (no boxing overhead), fall back to
++  // the erased bridge which is guaranteed to exist by the JVM spec.
+   jmethodID invoke_mid =
+-      env->GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;");
++      env->GetMethodID(cls, "invoke", "([F)I");
++  if (env->ExceptionCheck()) {
++    env->ExceptionClear();
++    invoke_mid = nullptr;
++  }
++
++  if (invoke_mid) {
++    // Fast path: call specialized invoke([F)I directly — no boxing needed.
++    jint ret = env->CallIntMethod(callback, invoke_mid, samples_arr);
++    if (env->ExceptionCheck()) {
++      env->ExceptionClear();
++      env->DeleteLocalRef(cls);
++      return 1;
++    }
++    env->DeleteLocalRef(cls);
++    return ret;
++  }
++
++  // Fallback: erased bridge invoke(Object)Object — works for all
++  // Function1 implementations (Kotlin, Java 8 lambdas, anonymous classes).
++  invoke_mid = env->GetMethodID(
++      cls, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
+   if (env->ExceptionCheck() || !invoke_mid) {
+     env->DeleteLocalRef(cls);
+     return 1;
+   }
+ 
++  // jfloatArray is a jobject, so it passes through as Object.
++  // The Kotlin bridge casts it to FloatArray, calls the specialized
++  // invoke, boxes the int result to Integer, and returns it.
+   jobject result = env->CallObjectMethod(callback, invoke_mid, samples_arr);
+   if (env->ExceptionCheck() || !result) {
+     env->DeleteLocalRef(cls);
+@@ -543,16 +577,56 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithCallbackImpl(
    sherpa_onnx::GeneratedAudio audio;
  
    if (callback) {
@@ -108,7 +157,7 @@ index 39feb3a..201a6aa 100644
    } else {
      audio = tts->Generate(p_text, config, nullptr);
    }
-@@ -574,16 +614,44 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithConfigImpl(
+@@ -574,16 +648,44 @@ Java_com_k2fsa_sherpa_onnx_OfflineTts_generateWithConfigImpl(
    sherpa_onnx::GeneratedAudio audio;
  
    if (callback) {
