@@ -68,6 +68,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,12 +90,15 @@ import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.tts.KokoroModelManager
 import com.google.ai.edge.gallery.tts.KokoroModelStatus
+import com.google.ai.edge.gallery.tts.KokoroTtsEngine
+import com.google.ai.edge.gallery.tts.TtsSmokeTest
 import com.google.ai.edge.gallery.ui.common.ClickableLink
 import com.google.ai.edge.gallery.ui.common.chat.TtsManager
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -446,6 +450,12 @@ private fun KokoroTtsSection() {
       )
     }
 
+    // Smoke test state
+    val smokeTestScope = rememberCoroutineScope()
+    var smokeTestRunning by remember { mutableStateOf(false) }
+    var smokeTestProgress by remember { mutableStateOf("") }
+    var smokeTestResults by remember { mutableStateOf<List<TtsSmokeTest.TestResult>?>(null) }
+
     // Action buttons
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       when (kokoroStatus) {
@@ -467,8 +477,71 @@ private fun KokoroTtsSection() {
           }) {
             Text("Re-download")
           }
+          OutlinedButton(
+            onClick = {
+              smokeTestRunning = true
+              smokeTestResults = null
+              smokeTestProgress = "Starting..."
+              smokeTestScope.launch {
+                val results = TtsSmokeTest.runAll(context) { step, total, name ->
+                  smokeTestProgress = "Testing ${step + 1}/$total: $name..."
+                }
+                smokeTestResults = results
+                smokeTestRunning = false
+                smokeTestProgress = ""
+              }
+            },
+            enabled = !smokeTestRunning,
+          ) {
+            Text(if (smokeTestRunning) "Testing..." else "Test TTS")
+          }
         }
         KokoroModelStatus.DOWNLOADING -> { /* no button during download */ }
+      }
+    }
+
+    // Smoke test progress
+    if (smokeTestRunning && smokeTestProgress.isNotEmpty()) {
+      Text(
+        smokeTestProgress,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.tertiary,
+      )
+    }
+
+    // Smoke test results
+    smokeTestResults?.let { results ->
+      val passed = results.count { it.passed }
+      val total = results.size
+      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+          "Results: $passed/$total passed",
+          style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+          color = if (passed == total) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        )
+        results.forEach { result ->
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              if (result.passed) Icons.Rounded.CheckCircle else Icons.Rounded.Cancel,
+              contentDescription = null,
+              tint = if (result.passed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+              modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+              buildString {
+                append(result.testName)
+                append(" (${result.durationMs}ms)")
+                if (!result.passed && result.error != null) {
+                  append(" — ${result.error}")
+                }
+              },
+              style = MaterialTheme.typography.bodySmall,
+              color = if (result.passed) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.error,
+            )
+          }
+        }
       }
     }
 

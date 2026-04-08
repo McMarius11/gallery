@@ -42,13 +42,16 @@ fun DebugLogsDialog(
 ) {
   val context = LocalContext.current
   val hasCrashLog = remember { CrashLogReader.readCrashLog(context) != null }
+  val hasTtsTrace = remember { CrashLogReader.readTtsCrashTrace(context) != null }
   var logText by remember { mutableStateOf("Loading…") }
   var showAll by remember { mutableStateOf(false) }
   var showCrash by remember { mutableStateOf(hasCrashLog) }
+  var showTtsTrace by remember { mutableStateOf(false) }
 
   // Load logs on open and when filter changes.
-  LaunchedEffect(showAll, showCrash) {
+  LaunchedEffect(showAll, showCrash, showTtsTrace) {
     logText = when {
+      showTtsTrace -> CrashLogReader.readTtsCrashTrace(context) ?: "(no TTS trace)"
       showCrash -> CrashLogReader.readCrashLog(context) ?: "(no crash log)"
       showAll -> AppLogReader.readAllLogs()
       else -> AppLogReader.readRecentLogs()
@@ -97,7 +100,7 @@ fun DebugLogsDialog(
           }
 
           if (hasCrashLog) {
-            OutlinedButton(onClick = { showCrash = !showCrash }) {
+            OutlinedButton(onClick = { showCrash = !showCrash; if (showCrash) showTtsTrace = false }) {
               Text(if (showCrash) "Live logs" else "Last Crash")
             }
           }
@@ -109,6 +112,22 @@ fun DebugLogsDialog(
               Toast.makeText(context, "Crash log cleared", Toast.LENGTH_SHORT).show()
             }) {
               Text("Clear Crash")
+            }
+          }
+
+          if (hasTtsTrace) {
+            OutlinedButton(onClick = { showTtsTrace = !showTtsTrace; if (showTtsTrace) showCrash = false }) {
+              Text(if (showTtsTrace) "Live logs" else "TTS Trace")
+            }
+          }
+
+          if (showTtsTrace) {
+            OutlinedButton(onClick = {
+              CrashLogReader.clearTtsCrashTrace(context)
+              showTtsTrace = false
+              Toast.makeText(context, "TTS trace cleared", Toast.LENGTH_SHORT).show()
+            }) {
+              Text("Clear TTS Trace")
             }
           }
         }
