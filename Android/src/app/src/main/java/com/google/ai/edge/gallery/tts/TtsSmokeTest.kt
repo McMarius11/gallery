@@ -87,7 +87,7 @@ object TtsSmokeTest {
     crashLog(appCtx, "Test 1 [generate() no callback]: $genStatus")
     Log.w(TAG, "Test 1 [generate() no callback]: $genStatus")
 
-    // Tests 2-N: Speak each test phrase (uses generateWithCallback)
+    // Tests 2-N: Speak each test phrase via TtsManager.speak() → generateWithCallback()
     for ((index, testCase) in TEST_CASES.withIndex()) {
       val (testName, text) = testCase
       val step = index + 2
