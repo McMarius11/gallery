@@ -132,6 +132,7 @@ dependencies {
   implementation(libs.hilt.android)
   implementation(libs.hilt.navigation.compose)
   implementation(libs.play.services.oss.licenses)
+  implementation(libs.commons.compress)
   implementation(libs.androidx.documentfile)
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)

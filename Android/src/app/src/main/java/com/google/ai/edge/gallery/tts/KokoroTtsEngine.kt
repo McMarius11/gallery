@@ -75,7 +75,7 @@ class KokoroTtsEngine : TtsEngine {
       val config = OfflineTtsConfig(
         model = OfflineTtsModelConfig(
           kokoro = OfflineTtsKokoroModelConfig(
-            model = File(modelDir, "model.onnx").absolutePath,
+            model = File(modelDir, "model.int8.onnx").absolutePath,
             voices = File(modelDir, "voices.bin").absolutePath,
             tokens = File(modelDir, "tokens.txt").absolutePath,
             dataDir = File(modelDir, "espeak-ng-data").absolutePath,
@@ -88,8 +88,9 @@ class KokoroTtsEngine : TtsEngine {
       )
 
       // Log file sizes to crash trace for truncation detection
-    val filesToLog = listOf("model.onnx", "voices.bin", "tokens.txt",
-      "espeak-ng-data/en_dict", "espeak-ng-data/phondata")
+    val filesToLog = listOf("model.int8.onnx", "voices.bin", "tokens.txt",
+      "espeak-ng-data/en_dict", "espeak-ng-data/phondata",
+      "espeak-ng-data/lang/gmw/en", "espeak-ng-data/lang/gmw/en-US")
     for (f in filesToLog) {
       val file = File(modelDir, f)
       crashLog("init(#$instanceId): $f = ${if (file.exists()) "${file.length()} bytes" else "MISSING"}")

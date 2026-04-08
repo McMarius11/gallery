@@ -21,6 +21,7 @@ protobuf = "0.9.5"
 protobufJavaLite = "4.26.1"
 #noinspection GradleDependency
 litertlm = "0.10.0"
+commonsCompress = "1.27.1"
 commonmark = "1.0.0-alpha02"
 richtext = "1.0.0-alpha02"
 playServicesTfliteJava = "16.4.0"
@@ -84,6 +85,7 @@ hilt-android-testing = { module = "com.google.dagger:hilt-android-testing", vers
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
 play-services-oss-licenses = { module = "com.google.android.gms:play-services-oss-licenses", version.ref = "playServicesOssLicenses"}
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
 moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
