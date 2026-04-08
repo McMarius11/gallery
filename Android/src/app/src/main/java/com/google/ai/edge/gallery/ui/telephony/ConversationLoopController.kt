@@ -3,6 +3,7 @@ package com.google.ai.edge.gallery.ui.telephony
 import android.speech.SpeechRecognizer
 import android.util.Log
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.tts.KokoroTtsEngine
 import com.google.ai.edge.gallery.tts.SherpaAsrEngine
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
@@ -19,6 +20,8 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "ConversationLoop"
 private const val MAX_CONSECUTIVE_ERRORS = 5
+private const val MAX_CONSECUTIVE_TTS_ERRORS = 2
+private const val TTS_TIMEOUT_MS = 45_000L
 
 class ConversationLoopController(
   private val context: android.content.Context,
@@ -30,8 +33,10 @@ class ConversationLoopController(
 ) {
   private var isActive = false
   private var consecutiveErrors = 0
+  private var consecutiveTtsErrors = 0
   private var scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
   private var bargeInJob: Job? = null
+  private var ttsTimeoutJob: Job? = null
 
   fun start() {
     // Check if any ASR backend is available before starting the call loop
@@ -46,8 +51,14 @@ class ConversationLoopController(
       return
     }
 
+    // Warn if TTS is blocked by previous native crashes
+    if (KokoroTtsEngine.isBlockedByCrashHistory(context)) {
+      Log.w(TAG, "Kokoro TTS blocked by crash history — responses will use Android TTS or be silent")
+    }
+
     isActive = true
     consecutiveErrors = 0
+    consecutiveTtsErrors = 0
     startListening()
   }
 
@@ -56,6 +67,7 @@ class ConversationLoopController(
     TtsManager.stop()
     holdToDictateViewModel.cancelSpeechRecognition()
     bargeInJob?.cancel()
+    ttsTimeoutJob?.cancel()
     scope.cancel()
     scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
   }
@@ -116,9 +128,37 @@ class ConversationLoopController(
 
       // Start TTS with callback to restart listening
       TtsManager.speak(lastAgentMessage.content) {
+        ttsTimeoutJob?.cancel()
         if (isActive) {
+          consecutiveTtsErrors = 0  // TTS completed successfully
           // TTS finished -> restart listening
           scope.launch {
+            startListening()
+          }
+        }
+      }
+
+      // Start timeout watchdog: if TTS doesn't complete within TTS_TIMEOUT_MS,
+      // assume native crash or hang and recover the conversation loop.
+      ttsTimeoutJob?.cancel()
+      ttsTimeoutJob = scope.launch {
+        delay(TTS_TIMEOUT_MS)
+        if (isActive && telephonyViewModel.uiState.value.phase == CallPhase.SPEAKING) {
+          consecutiveTtsErrors++
+          Log.e(TAG, "TTS timeout after ${TTS_TIMEOUT_MS}ms, consecutiveTtsErrors=$consecutiveTtsErrors")
+
+          TtsManager.stop()
+
+          if (consecutiveTtsErrors >= MAX_CONSECUTIVE_TTS_ERRORS) {
+            Log.e(TAG, "Too many TTS timeouts ($consecutiveTtsErrors), stopping loop")
+            isActive = false
+            telephonyViewModel.setPhase(CallPhase.IDLE)
+            telephonyViewModel.setError(
+              "Text-to-speech is not responding. The TTS engine may have crashed. " +
+                "Try re-downloading the Kokoro model in Settings."
+            )
+          } else {
+            // Retry: skip speaking and go back to listening
             startListening()
           }
         }
@@ -174,6 +214,7 @@ class ConversationLoopController(
 
   fun interruptTts() {
     if (telephonyViewModel.uiState.value.phase == CallPhase.SPEAKING) {
+      ttsTimeoutJob?.cancel()
       TtsManager.stop()
       // Will transition to LISTENING when startListening is called
     }

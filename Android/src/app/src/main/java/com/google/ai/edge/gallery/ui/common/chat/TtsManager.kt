@@ -105,6 +105,13 @@ object TtsManager {
         return
       }
 
+      // Check if TTS is blocked by previous native crashes
+      if (KokoroTtsEngine.isBlockedByCrashHistory(appCtx)) {
+        crashLog(appCtx, "ensureKokoroEngine($caller): BLOCKED by crash history, staying on Android TTS")
+        Log.e(TAG, "ensureKokoroEngine($caller): Kokoro TTS blocked by previous native crashes. Re-download model to reset.")
+        return
+      }
+
       val count = initCount.incrementAndGet()
       crashLog(appCtx, "ensureKokoroEngine($caller): creating KokoroTtsEngine #$count")
       Log.w(TAG, "ensureKokoroEngine($caller): creating KokoroTtsEngine #$count")
@@ -145,7 +152,13 @@ object TtsManager {
   }
 
   fun speak(text: String, onDone: (() -> Unit)? = null) {
-    engine.speak(text, onDone)
+    try {
+      engine.speak(text, onDone)
+    } catch (e: Exception) {
+      Log.e(TAG, "speak() threw: ${e.message}", e)
+      // Always invoke onDone so ConversationLoopController doesn't hang
+      onDone?.invoke()
+    }
   }
 
   fun stop() {
@@ -166,6 +179,8 @@ object TtsManager {
     fallback.init(context)
     engine = fallback
     kokoroInitialized = false
+    // Reset crash state so Kokoro can be re-initialized after model re-download
+    KokoroTtsEngine.resetCrashState(context)
   }
 
   fun shutdown() {
