@@ -60,7 +60,7 @@ object TtsSmokeTest {
   ): List<TestResult> {
     val appCtx = context.applicationContext
     val results = mutableListOf<TestResult>()
-    val totalTests = TEST_CASES.size + 1 // +1 for engine-ready check
+    val totalTests = TEST_CASES.size + 2 // +1 engine check, +1 generate-without-callback
 
     crashLog(appCtx, "=== SMOKE TEST STARTED ===")
     crashLog(appCtx, "Engine: isReady=${TtsManager.isReady()}, blocked=${KokoroTtsEngine.isBlockedByCrashHistory(appCtx)}")
@@ -72,15 +72,25 @@ object TtsSmokeTest {
     crashLog(appCtx, "Test 0 [Engine ready]: ${if (engineResult.passed) "PASS" else "FAIL: ${engineResult.error}"}")
 
     if (!engineResult.passed) {
-      // No point running speak tests if engine is not ready
       crashLog(appCtx, "=== SMOKE TEST ABORTED: engine not ready ===")
       return results
     }
 
-    // Tests 1-N: Speak each test phrase
+    // Test 1: generate() WITHOUT callback — isolates phonemization/inference from callback
+    // If this crashes: problem is in espeak-ng phonemization or ONNX inference
+    // If this works but later tests crash: problem is the JNI callback mechanism
+    onProgress(1, totalTests, "generate() no callback")
+    crashLog(appCtx, "Test 1 [generate() no callback]: starting")
+    val genResult = runGenerateWithoutCallbackTest(appCtx)
+    results.add(genResult)
+    val genStatus = if (genResult.passed) "PASS (${genResult.durationMs}ms)" else "FAIL: ${genResult.error}"
+    crashLog(appCtx, "Test 1 [generate() no callback]: $genStatus")
+    Log.w(TAG, "Test 1 [generate() no callback]: $genStatus")
+
+    // Tests 2-N: Speak each test phrase (uses generateWithCallback)
     for ((index, testCase) in TEST_CASES.withIndex()) {
       val (testName, text) = testCase
-      val step = index + 1
+      val step = index + 2
       onProgress(step, totalTests, testName)
 
       crashLog(appCtx, "Test $step [$testName]: starting, text=\"${text.take(80)}\"")
@@ -126,6 +136,70 @@ object TtsSmokeTest {
         text = "(no audio)",
         passed = true,
         durationMs = duration,
+      )
+    }
+  }
+
+  /**
+   * Test generate() WITHOUT callback on a background thread.
+   * This isolates whether the crash is in phonemization/ONNX inference vs the callback.
+   */
+  private suspend fun runGenerateWithoutCallbackTest(context: Context): TestResult {
+    val start = System.currentTimeMillis()
+    val text = "Test"
+
+    val prefs = context.getSharedPreferences("kokoro_tts_prefs", Context.MODE_PRIVATE)
+    prefs.edit()
+      .putBoolean("tts_speak_in_progress", true)
+      .putLong("tts_canary_set_at", System.currentTimeMillis())
+      .putString("tts_last_sentence", "SMOKE_TEST[1] generate() no callback: $text")
+      .commit()
+
+    return try {
+      val numSamples = withContext(Dispatchers.Default) {
+        // Access the engine directly — TtsManager doesn't expose generate()
+        val engine = TtsManager.getEngine()
+        if (engine is KokoroTtsEngine) {
+          engine.testGenerateWithoutCallback(text)
+        } else {
+          -2 // Not a KokoroTtsEngine
+        }
+      }
+      val duration = System.currentTimeMillis() - start
+      prefs.edit().putBoolean("tts_speak_in_progress", false).apply()
+
+      when {
+        numSamples > 0 -> TestResult(
+          testName = "generate() no callback",
+          text = text,
+          passed = true,
+          durationMs = duration,
+          error = null,
+        )
+        numSamples == -2 -> TestResult(
+          testName = "generate() no callback",
+          text = text,
+          passed = false,
+          durationMs = duration,
+          error = "Engine is not KokoroTtsEngine",
+        )
+        else -> TestResult(
+          testName = "generate() no callback",
+          text = text,
+          passed = false,
+          durationMs = duration,
+          error = "generate() returned $numSamples samples",
+        )
+      }
+    } catch (e: Exception) {
+      val duration = System.currentTimeMillis() - start
+      prefs.edit().putBoolean("tts_speak_in_progress", false).apply()
+      TestResult(
+        testName = "generate() no callback",
+        text = text,
+        passed = false,
+        durationMs = duration,
+        error = "${e.javaClass.simpleName}: ${e.message}",
       )
     }
   }

@@ -183,6 +183,9 @@ object TtsManager {
     KokoroTtsEngine.resetCrashState(context)
   }
 
+  /** Expose the current engine for diagnostics (e.g., TtsSmokeTest). */
+  fun getEngine(): TtsEngine = engine
+
   fun shutdown() {
     Log.w(TAG, "shutdown() called, engine=${engine.javaClass.simpleName}, kokoroInit=$kokoroInitialized, caller=${Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.fileName}:${it.lineNumber}" }}")
     engine.shutdown()

@@ -371,6 +371,35 @@ class KokoroTtsEngine : TtsEngine {
 
   override fun isReady(): Boolean = initialized
 
+  /**
+   * Test generate() WITHOUT callback — for diagnostics only.
+   * If this works but generateWithCallback() crashes, the issue is the callback mechanism.
+   * If this also crashes, the issue is in phonemization or ONNX inference.
+   * Returns the number of audio samples generated, or -1 on error.
+   */
+  fun testGenerateWithoutCallback(text: String): Int {
+    if (!initialized || offlineTts == null) return -1
+    crashLog("testGenerateWithoutCallback: text=\"${text.take(50)}\"")
+
+    val prefs = appContext?.getSharedPreferences("kokoro_tts_prefs", android.content.Context.MODE_PRIVATE)
+    prefs?.edit()
+      ?.putBoolean(KEY_TTS_SPEAK_CANARY, true)
+      ?.putLong(KEY_TTS_CANARY_TIMESTAMP, System.currentTimeMillis())
+      ?.putString(KEY_TTS_LAST_SENTENCE, "TEST_NO_CALLBACK: ${text.take(200)}")
+      ?.commit()
+
+    return try {
+      val audio = offlineTts!!.generate(text = text, sid = speakerId, speed = 1.0f)
+      prefs?.edit()?.putBoolean(KEY_TTS_SPEAK_CANARY, false)?.apply()
+      crashLog("testGenerateWithoutCallback: SUCCESS, ${audio.samples.size} samples, sampleRate=${audio.sampleRate}")
+      audio.samples.size
+    } catch (e: Exception) {
+      prefs?.edit()?.putBoolean(KEY_TTS_SPEAK_CANARY, false)?.apply()
+      crashLog("testGenerateWithoutCallback: EXCEPTION ${e.javaClass.simpleName}: ${e.message}")
+      -1
+    }
+  }
+
   override fun getAvailableVoices(): List<Pair<Int, String>> {
     val numSpeakers = offlineTts?.numSpeakers() ?: 0
     return (0 until numSpeakers).map { id ->
