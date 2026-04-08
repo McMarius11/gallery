@@ -2,24 +2,38 @@
 
 > Erstelle dieses Issue hier: https://github.com/k2-fsa/sherpa-onnx/issues/new
 >
-> **Title:** `Bug: generateWithCallback() crashes with SIGABRT due to JNI threading issue`
+> **Title:** `Bug: generateWithCallback() crashes with SIGABRT due to JNI threading issue in offline-tts.cc`
 > **Label:** `bug`
+>
+> --- Alles unterhalb kopieren ---
+
+### Important Instructions ⚠️
+
+Before submitting this issue, please **read carefully** and confirm the following:
+
+- [x] I am using the **latest version** of `sherpa-onnx`. If not, I will upgrade and check if the issue persists.
+- [x] I understand that **issues not reproducible on the latest version** may be closed without response.
+- [x] I have verified that the error is reproducible using **only `sherpa-onnx`**, not code from my own project.
+- [x] I will provide **detailed steps** to reproduce the issue.
+- [x] I will provide **complete logs** and error messages.
+- [x] I understand that **issues not following these instructions** may be closed or receive no response.
 
 ---
 
-## Summary
+### Describe the issue
 
-`OfflineTts.generateWithCallback()` crashes with SIGABRT (Fatal Signal 6) on Android when using Kokoro TTS. The `generate()` method with identical parameters works perfectly. The root cause is a JNI threading bug in `sherpa-onnx/jni/offline-tts.cc`.
+`OfflineTts.generateWithCallback()` crashes with SIGABRT (Fatal Signal 6) on Android when using Kokoro TTS. The `generate()` method with identical parameters works perfectly.
 
-## Environment
+The root cause is a JNI threading bug in `sherpa-onnx/jni/offline-tts.cc`: the C++ lambda captures a thread-local `JNIEnv*` and a local `jobject` reference, both of which become invalid if the callback is invoked on a different thread.
 
-- **sherpa-onnx version:** v1.12.35 (pre-built `.so` files in `jniLibs/arm64-v8a/`)
-- **Kotlin wrappers:** Copied from `sherpa-onnx/kotlin-api/` (verified to match v1.12.35 exactly)
-- **TTS model:** Kokoro (`kokoro-en-v0_19`)
-- **Android:** arm64-v8a, minSdk 31, targetSdk 35
-- **Device RAM:** 5 GB free, `lowMemory=false`
+The entire sherpa-onnx JNI codebase has **zero** instances of `JavaVM*`, `JNI_OnLoad`, `AttachCurrentThread`, or `NewGlobalRef` — meaning no JNI callback in the project is thread-safe.
 
-## Reproduction
+### Steps to reproduce
+
+1. Build sherpa-onnx v1.12.35 for Android arm64-v8a (or use pre-built `.so` files)
+2. Use the Kotlin API with Kokoro TTS model (`kokoro-en-v0_19`)
+3. Initialize `OfflineTts` — succeeds (sampleRate=24000, numSpeakers=11)
+4. Call `generateWithCallback()` with any text:
 
 ```kotlin
 // This CRASHES with SIGABRT on every text, even single words:
@@ -37,19 +51,38 @@ val audio = offlineTts.generate(
 )
 ```
 
-**Symptoms:**
-- Crash occurs during native C++ → JVM callback transition
-- Affects every text input, including single words like "Test"
-- Initialization succeeds (sampleRate=24000, numSpeakers=11)
-- 8/8 smoke tests pass when using `generate()` instead
+5. App crashes with `Fatal signal 6 (SIGABRT)` during the native C++ → JVM callback transition
 
-## Root Cause Analysis
+This is **100% reproducible** — every text input crashes, including single words. 8/8 smoke tests pass when using `generate()` instead.
 
-The bug is in `sherpa-onnx/jni/offline-tts.cc`, in both `generateWithCallbackImpl` (line 546) and `generateWithConfigImpl` (line 577).
+### Expected behavior
 
-### The Problem
+`generateWithCallback()` should invoke the Kotlin callback with audio samples during generation without crashing, identical to how `generate()` works but with streaming output.
 
-The C++ lambda captures `JNIEnv *env` and `jobject callback` by value:
+### Environment
+
+- `sherpa-onnx` version: v1.12.35 (also checked v1.12.36 changelog — not fixed)
+- OS: Android (minSdk 31, targetSdk 35, arm64-v8a)
+- Kotlin wrappers: Copied from `sherpa-onnx/kotlin-api/` — verified to match v1.12.35 exactly
+- TTS model: Kokoro (`kokoro-en-v0_19`)
+- Device RAM: 5 GB free, `lowMemory=false`
+- onnxruntime: bundled `libonnxruntime.so` from sherpa-onnx v1.12.35
+
+### Logs
+
+```
+Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE)
+```
+
+The crash occurs inside the JNI callback lambda in `generateWithCallbackImpl()`. It cannot be caught by try/catch because SIGABRT terminates the process immediately.
+
+We added a "canary" pattern (SharedPreferences flag set before JNI call, cleared after) to confirm the crash location: it always happens during `generateWithCallback()`, never during init or `generate()`.
+
+### Root Cause Analysis
+
+The bug is in `sherpa-onnx/jni/offline-tts.cc`, lines 546-553 (`generateWithCallbackImpl`) and lines 577-584 (`generateWithConfigImpl`).
+
+**The buggy code:**
 
 ```cpp
 // sherpa-onnx/jni/offline-tts.cc, line 546-553
@@ -72,9 +105,9 @@ audio = tts->Generate(p_text, config, callback_wrapper);
 | **No `AttachCurrentThread()`** | The callback thread has no valid JVM environment → JNI calls on an unattached thread |
 | **`jobject callback` is a local reference** | Local refs are only valid within the calling JNI frame. Using them in a lambda that may outlive the frame or run on a different thread is undefined behavior per the JNI spec |
 
-**Missing infrastructure:** The entire sherpa-onnx JNI codebase has **zero** instances of `JavaVM*`, `JNI_OnLoad`, `AttachCurrentThread`, or `NewGlobalRef`.
+Reference: [Android NDK JNI Tips — Threads](https://developer.android.com/training/articles/perf-jni#threads)
 
-### Confirmed by Elimination
+**Ruled out:**
 
 | Potential Cause | Ruled Out |
 |----------------|-----------|
@@ -86,17 +119,19 @@ audio = tts->Generate(p_text, config, callback_wrapper);
 | Kotlin wrapper mismatch | Verified: wrappers match v1.12.35 exactly |
 | JNI callback signature | `([F)Ljava/lang/Integer;` is correct |
 
-## Proposed Fix
+### Proposed Fix
 
-A patch is available at [McMarius11/gallery@claude/fix-gallery-issue-1-ErQlp](https://github.com/McMarius11/gallery/blob/claude/fix-gallery-issue-1-ErQlp/fix-generateWithCallback-sigabrt.patch) — 4 files, +106/-20 lines.
+A complete patch (4 files, +106/-20 lines) is available here:
+[fix-generateWithCallback-sigabrt.patch](https://github.com/McMarius11/gallery/blob/claude/fix-gallery-issue-1-ErQlp/fix-generateWithCallback-sigabrt.patch)
 
-### Changes:
+**Summary of changes:**
 
 **1. `sherpa-onnx/jni/jni.cc` — Cache `JavaVM*` in `JNI_OnLoad`**
 ```cpp
 static JavaVM *g_jvm = nullptr;
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
+SHERPA_ONNX_EXTERN_C
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
   g_jvm = vm;
   return JNI_VERSION_1_6;
 }
@@ -109,43 +144,12 @@ JavaVM *GetJavaVM() { return g_jvm; }
 JavaVM *GetJavaVM();
 ```
 
-**3. `sherpa-onnx/jni/offline-tts.cc` — Fix both lambdas**
-```cpp
-if (callback) {
-    JavaVM *jvm = GetJavaVM();
-    if (!jvm) {
-      SHERPA_ONNX_LOGE("GetJavaVM() returned null");
-      audio = tts->Generate(p_text, config, nullptr);  // fallback
-    } else {
-      jobject global_callback = env->NewGlobalRef(callback);
-
-      auto callback_wrapper =
-          [jvm, global_callback](const float *samples, int32_t n, float) -> int32_t {
-        JNIEnv *cb_env = nullptr;
-        bool did_attach = false;
-        jint rc = jvm->GetEnv((void **)&cb_env, JNI_VERSION_1_6);
-        if (rc == JNI_EDETACHED) {
-          if (jvm->AttachCurrentThread(&cb_env, nullptr) != JNI_OK)
-            return 0;
-          did_attach = true;
-        } else if (rc != JNI_OK) {
-          return 0;
-        }
-
-        jfloatArray samples_arr = cb_env->NewFloatArray(n);
-        cb_env->SetFloatArrayRegion(samples_arr, 0, n, samples);
-        int32_t ret = CallCallback(cb_env, global_callback, samples_arr);
-        cb_env->DeleteLocalRef(samples_arr);
-
-        if (did_attach) jvm->DetachCurrentThread();
-        return ret;
-      };
-
-      audio = tts->Generate(p_text, config, callback_wrapper);
-      env->DeleteGlobalRef(global_callback);
-    }
-}
-```
+**3. `sherpa-onnx/jni/offline-tts.cc` — Fix both lambdas with thread-safe JNI**
+- Use `NewGlobalRef` for the callback object (survives across threads/JNI frames)
+- In the lambda: `GetEnv`/`AttachCurrentThread` to obtain a valid `JNIEnv*` for the current thread
+- `DetachCurrentThread` only if we attached (does not disturb already-attached threads)
+- `DeleteGlobalRef` after `Generate()` returns
+- Null-check on `GetJavaVM()` with graceful fallback to `generate()` without callback
 
 **4. `sherpa-onnx/jni/sherpa-onnx-symbols.lds` — Export `JNI_OnLoad`**
 ```
@@ -157,25 +161,13 @@ if (callback) {
     *;
 };
 ```
+Without this, the linker's `local: *` hides `JNI_OnLoad` and the JVM never calls it → `g_jvm` stays null.
 
-Without this, the linker's `local: *` hides `JNI_OnLoad` and the JVM never calls it.
+### Note
 
-### Design Decisions
+This same pattern (capturing `JNIEnv*` in lambdas without thread-safe handling) may affect other JNI callbacks in the codebase (e.g., in `online-recognizer.cc` or `voice-activity-detector.cc`). A codebase-wide audit for similar patterns would be beneficial.
 
-- **`GetEnv` before `AttachCurrentThread`:** No-op when callback runs on the original JVM thread (common case with `numThreads=1`), only attaches when on a non-JVM thread
-- **`DetachCurrentThread` only if we attached:** Does not disturb threads we didn't attach
-- **Null-check on `GetJavaVM()`:** Graceful fallback to `generate()` without callback if `JNI_OnLoad` was not called
-- **`NewGlobalRef` before lambda, `DeleteGlobalRef` after `Generate()`:** Lifetime exactly matches the period where the callback can be invoked
-
-## Current Workaround
-
-We use `generate()` instead of `generateWithCallback()` in our app. Trade-off: ~1-3s latency per sentence before audio starts playing (acceptable since text is split into sentences). All 8/8 smoke tests pass with this workaround.
-
-## Note
-
-This same pattern (capturing `JNIEnv*` in lambdas without thread-safe handling) may affect other JNI callbacks in the codebase. A codebase-wide audit for similar patterns would be beneficial.
-
-## Related Issues
+### Related Issues
 
 - #823 — Android TTS SIGABRT
 - #943 — TTS crash on repeated generation
