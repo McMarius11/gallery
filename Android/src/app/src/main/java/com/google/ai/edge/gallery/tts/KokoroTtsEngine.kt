@@ -87,7 +87,14 @@ class KokoroTtsEngine : TtsEngine {
         ),
       )
 
-      crashLog("init(#$instanceId): calling OfflineTts(config)")
+      // Log file sizes to crash trace for truncation detection
+    val filesToLog = listOf("model.onnx", "voices.bin", "tokens.txt",
+      "espeak-ng-data/en_dict", "espeak-ng-data/phondata")
+    for (f in filesToLog) {
+      val file = File(modelDir, f)
+      crashLog("init(#$instanceId): $f = ${if (file.exists()) "${file.length()} bytes" else "MISSING"}")
+    }
+    crashLog("init(#$instanceId): calling OfflineTts(config)")
       offlineTts = OfflineTts(config = config)
       sampleRate = offlineTts!!.sampleRate()
       val numSpeakers = offlineTts!!.numSpeakers()
