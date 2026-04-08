@@ -179,20 +179,8 @@ class OfflineTts(
         )
     }
 
-    fun generateWithConfig(
-      text: String,
-      config: GenerationConfig
-    ): GeneratedAudio {
-        return generateWithConfigImpl(ptr, text, config, null)
-    }
-
-    fun generateWithConfigAndCallback(
-        text: String,
-        config: GenerationConfig,
-        callback: (samples: FloatArray) -> Int
-    ): GeneratedAudio {
-        return generateWithConfigImpl(ptr, text, config, callback)
-    }
+    // generateWithConfig* removed — not available in sherpa-onnx v1.11.0
+    // (requires v1.12.35+). Not used by the app.
 
     fun allocate(assetManager: AssetManager? = null) {
         if (ptr == 0L) {
@@ -253,12 +241,7 @@ class OfflineTts(
     ): GeneratedAudio
 
 
-    private external fun generateWithConfigImpl(
-        ptr: Long,
-        text: String,
-        config: GenerationConfig,
-        callback: ((samples: FloatArray) -> Int)?
-    ): GeneratedAudio
+    // generateWithConfigImpl removed — not in sherpa-onnx v1.11.0
 
     companion object {
         init {
