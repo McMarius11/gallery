@@ -299,24 +299,25 @@ class KokoroTtsEngine : TtsEngine {
             ?.putString(KEY_TTS_LAST_SENTENCE, "sentence $i/${sentences.size}: ${sentence.take(200)}")
             ?.commit()  // commit() — must be on disk before JNI
 
-          // Use generate() instead of generateWithCallback() — even with the
-          // JNI threading fix (JNI_OnLoad + AttachCurrentThread + NewGlobalRef),
-          // generateWithCallback() still crashes with SIGABRT. The root cause
-          // is NOT threading. See gallery#1 for ongoing investigation.
-          val audio = offlineTts!!.generate(
+          // Use generateWithCallback() for real-time streaming — writes audio
+          // chunks to AudioTrack as they are generated, reducing latency.
+          // Requires patched libsherpa-onnx-jni.so with:
+          //   1. Thread-safe JNI callbacks (JNI_OnLoad + AttachCurrentThread)
+          //   2. Fixed callback signature (([F)I + erased bridge fallback)
+          // See gallery#1.
+          val audio = offlineTts!!.generateWithCallback(
             text = sentence,
             sid = speakerId,
             speed = 1.0f,
-          )
+          ) { samples ->
+            if (!isActive || stopped) return@generateWithCallback 0
+            track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+            1 // continue generating
+          }
 
           // Speak succeeded for this sentence — clear canary
           prefs?.edit()?.putBoolean(KEY_TTS_SPEAK_CANARY, false)?.apply()
 
-          // Write all samples to AudioTrack
-          if (isActive && !stopped && audio.samples.isNotEmpty()) {
-            crashLog("playing ${audio.samples.size} samples for sentence $i")
-            track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
-          }
           crashLog("sentence $i done")
         }
 
