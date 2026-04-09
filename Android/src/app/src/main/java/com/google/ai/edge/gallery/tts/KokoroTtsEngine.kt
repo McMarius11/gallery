@@ -299,23 +299,23 @@ class KokoroTtsEngine : TtsEngine {
             ?.putString(KEY_TTS_LAST_SENTENCE, "sentence $i/${sentences.size}: ${sentence.take(200)}")
             ?.commit()  // commit() — must be on disk before JNI
 
-          // Use generate() instead of generateWithCallback() — the JNI callback
-          // mechanism in sherpa-onnx v1.12.35 crashes with SIGABRT, but generate()
-          // (which returns all samples at once) works correctly.
-          val audio = offlineTts!!.generate(
+          // Use generateWithCallback() to stream audio chunks to AudioTrack
+          // in real-time as they are generated, for lower latency playback.
+          offlineTts!!.generateWithCallback(
             text = sentence,
             sid = speakerId,
             speed = 1.0f,
-          )
+          ) { samples ->
+            if (!isActive || stopped) {
+              1 // return 1 to stop generation
+            } else {
+              track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+              0 // return 0 to continue
+            }
+          }
 
           // Speak succeeded for this sentence — clear canary
           prefs?.edit()?.putBoolean(KEY_TTS_SPEAK_CANARY, false)?.apply()
-
-          // Write all samples to AudioTrack
-          if (isActive && !stopped && audio.samples.isNotEmpty()) {
-            crashLog("playing ${audio.samples.size} samples for sentence $i")
-            track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
-          }
           crashLog("sentence $i done")
         }
 
