@@ -263,7 +263,7 @@ Users can also edit the persona at runtime: tap the settings icon (gear) → "Sy
 
 ### sherpa-onnx Native Library
 
-- **Version:** v1.12.35
+- **Version:** v1.12.36
 - **Bundled as:** Pre-built `.so` files in `jniLibs/arm64-v8a/` (no Maven dependency)
 - **Files:** `libsherpa-onnx-jni.so` (5.1MB), `libonnxruntime.so` (19MB)
 - **Used by:** Both Kokoro TTS (`KokoroTtsEngine`) and Whisper ASR (`SherpaAsrEngine`)

@@ -1,12 +1,17 @@
-// Copyright (c)  2023  Xiaomi Corporation
 package com.k2fsa.sherpa.onnx
 
 import android.content.res.AssetManager
 
-data class FeatureConfig(
-    var sampleRate: Int = 16000,
-    var featureDim: Int = 80,
-    var dither: Float = 0.0f,
+data class OfflineRecognizerResult(
+    val text: String,
+    val tokens: Array<String>,
+    val timestamps: FloatArray,
+    val lang: String,
+    val emotion: String,
+    val event: String,
+
+    // valid only for TDT models
+    val durations: FloatArray,
 )
 
 data class OfflineTransducerModelConfig(
@@ -81,9 +86,9 @@ data class OfflineQwen3AsrModelConfig(
 data class OfflineWhisperModelConfig(
     var encoder: String = "",
     var decoder: String = "",
-    var language: String = "en",
-    var task: String = "transcribe",
-    var tailPaddings: Int = 1000,
+    var language: String = "en", // Used with multilingual model
+    var task: String = "transcribe", // transcribe or translate
+    var tailPaddings: Int = 1000, // Padding added at the end of the samples
     var enableTokenTimestamps: Boolean = false,
     var enableSegmentTimestamps: Boolean = false,
 )
@@ -109,6 +114,10 @@ data class OfflineFireRedAsrModelConfig(
     var decoder: String = "",
 )
 
+// For moonshine v1, you need four models.
+// For moonshine v2, you need two models.
+// - v1: preprocessor, encoder, uncachedDecoder, cachedDecoder
+// - v2: encoder, mergedDecoder
 data class OfflineMoonshineModelConfig(
     var preprocessor: String = "",
     var encoder: String = "",
@@ -141,7 +150,8 @@ data class OfflineModelConfig(
     var qwen3Asr: OfflineQwen3AsrModelConfig = OfflineQwen3AsrModelConfig(),
     var fireRedAsrCtc: OfflineFireRedAsrCtcModelConfig = OfflineFireRedAsrCtcModelConfig(),
     var canary: OfflineCanaryModelConfig = OfflineCanaryModelConfig(),
-    var cohereTranscribe: OfflineCohereTranscribeModelConfig = OfflineCohereTranscribeModelConfig(),
+    var cohereTranscribe: OfflineCohereTranscribeModelConfig =
+        OfflineCohereTranscribeModelConfig(),
     var teleSpeech: String = "",
     var numThreads: Int = 1,
     var debug: Boolean = false,
@@ -155,6 +165,7 @@ data class OfflineModelConfig(
 data class OfflineRecognizerConfig(
     var featConfig: FeatureConfig = FeatureConfig(),
     var modelConfig: OfflineModelConfig = OfflineModelConfig(),
+    // var lmConfig: OfflineLMConfig(), // TODO(fangjun): enable it
     var hr: HomophoneReplacerConfig = HomophoneReplacerConfig(),
     var decodingMethod: String = "greedy_search",
     var maxActivePaths: Int = 4,
@@ -165,44 +176,9 @@ data class OfflineRecognizerConfig(
     var blankPenalty: Float = 0.0f,
 )
 
-data class OfflineRecognizerResult(
-    val text: String,
-    val tokens: Array<String>,
-    val timestamps: FloatArray,
-    val lang: String,
-    val emotion: String,
-    val event: String,
-    val durations: FloatArray,
-)
-
-class OfflineStream(var ptr: Long) {
-    fun acceptWaveform(samples: FloatArray, sampleRate: Int) =
-        acceptWaveform(ptr, samples = samples, sampleRate = sampleRate)
-
-    fun free() {
-        if (ptr != 0L) {
-            delete(ptr)
-            ptr = 0
-        }
-    }
-
-    protected fun finalize() {
-        free()
-    }
-
-    private external fun acceptWaveform(ptr: Long, samples: FloatArray, sampleRate: Int)
-    private external fun delete(ptr: Long)
-
-    companion object {
-        init {
-            System.loadLibrary("sherpa-onnx-jni")
-        }
-    }
-}
-
 class OfflineRecognizer(
     assetManager: AssetManager? = null,
-    var config: OfflineRecognizerConfig,
+    val config: OfflineRecognizerConfig,
 ) {
     private var ptr: Long
 
@@ -214,30 +190,40 @@ class OfflineRecognizer(
         }
     }
 
-    fun createStream(hotwords: String = ""): OfflineStream {
-        val p = if (hotwords.isEmpty()) {
-            createStream(ptr)
-        } else {
-            createStreamWithHotwords(ptr, hotwords)
-        }
-        return OfflineStream(p)
-    }
-
-    fun decode(stream: OfflineStream) = decode(ptr, stream.ptr)
-
-    fun getResult(stream: OfflineStream): OfflineRecognizerResult =
-        getResult(stream.ptr)
-
-    fun free() {
+    protected fun finalize() {
         if (ptr != 0L) {
             delete(ptr)
             ptr = 0
         }
     }
 
-    protected fun finalize() {
-        free()
+    fun release() = finalize()
+
+    fun createStream(): OfflineStream {
+        val p = createStream(ptr)
+        return OfflineStream(p)
     }
+
+    fun createStream(hotwords: String): OfflineStream {
+        val p = createStreamWithHotwords(ptr, hotwords)
+        return OfflineStream(p)
+    }
+
+    fun getResult(stream: OfflineStream): OfflineRecognizerResult {
+        return getResult(stream.ptr)
+    }
+
+    fun decode(stream: OfflineStream) = decode(ptr, stream.ptr)
+
+    fun setConfig(config: OfflineRecognizerConfig) = setConfig(ptr, config)
+
+    private external fun delete(ptr: Long)
+
+    private external fun createStream(ptr: Long): Long
+
+    private external fun createStreamWithHotwords(ptr: Long, hotwords: String): Long
+
+    private external fun setConfig(ptr: Long, config: OfflineRecognizerConfig)
 
     private external fun newFromAsset(
         assetManager: AssetManager,
@@ -248,12 +234,6 @@ class OfflineRecognizer(
         config: OfflineRecognizerConfig,
     ): Long
 
-    private external fun delete(ptr: Long)
-
-    private external fun createStream(ptr: Long): Long
-
-    private external fun createStreamWithHotwords(ptr: Long, hotwords: String): Long
-
     private external fun decode(ptr: Long, streamPtr: Long)
 
     private external fun getResult(streamPtr: Long): OfflineRecognizerResult
@@ -262,5 +242,8 @@ class OfflineRecognizer(
         init {
             System.loadLibrary("sherpa-onnx-jni")
         }
+
+        @JvmStatic
+        external fun prependAdspLibraryPath(newPath: String) // for qnn
     }
 }

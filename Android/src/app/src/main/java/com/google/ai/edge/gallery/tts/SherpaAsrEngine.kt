@@ -241,7 +241,7 @@ class SherpaAsrEngine(private val context: Context) {
 
   fun free() {
     stopListening()
-    recognizer?.free()
+    recognizer?.release()
     recognizer = null
   }
 
@@ -253,7 +253,7 @@ class SherpaAsrEngine(private val context: Context) {
   fun releaseRecognizerMemory() {
     if (recognizer != null) {
       Log.w(TAG, "Releasing recognizer to free memory for TTS")
-      recognizer?.free()
+      recognizer?.release()
       recognizer = null
     }
   }
@@ -378,7 +378,7 @@ class SherpaAsrEngine(private val context: Context) {
       stream.acceptWaveform(samples, SAMPLE_RATE)
       rec.decode(stream)
       val result = rec.getResult(stream)
-      stream.free()
+      stream.release()
 
       // Recognition succeeded — clear canary
       prefs.edit().putBoolean(KEY_RECOGNIZE_CANARY, false).apply()
